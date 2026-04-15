@@ -1,26 +1,142 @@
 @import "tailwindcss";
 
+/* ── Base CSS Variables ─────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fbf8ff;
+  --foreground: #141936;
 }
 
+/* ── Tailwind Theme: Material Design 3 Color Tokens ────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Base */
+  --color-background:               #fbf8ff;
+  --color-foreground:               #141936;
+
+  /* Primary */
+  --color-primary:                  #0050b8;
+  --color-on-primary:               #ffffff;
+  --color-primary-fixed:            #d9e2ff;
+  --color-primary-fixed-dim:        #b0c6ff;
+  --color-on-primary-fixed:         #001944;
+  --color-on-primary-fixed-variant: #00429a;
+  --color-primary-container:        #0050b8;
+  --color-on-primary-container:     #eff1ff;
+  --color-inverse-primary:          #b0c6ff;
+
+  /* Secondary */
+  --color-secondary:                #585c7d;
+  --color-on-secondary:             #ffffff;
+  --color-secondary-container:      #d4d8fe;
+  --color-on-secondary-container:   #585d7e;
+  --color-secondary-fixed:          #dee0ff;
+  --color-secondary-fixed-dim:      #c0c4ea;
+  --color-on-secondary-fixed:       #141936;
+  --color-on-secondary-fixed-variant: #404564;
+
+  /* Tertiary (star yellow) */
+  --color-tertiary:                 #6e5d00;
+  --color-on-tertiary:              #ffffff;
+  --color-tertiary-container:       #c6aa00;
+  --color-on-tertiary-container:    #4b3f00;
+  --color-tertiary-fixed:           #ffe25f;
+  --color-tertiary-fixed-dim:       #e5c514;
+  --color-on-tertiary-fixed:        #221b00;
+  --color-on-tertiary-fixed-variant: #534600;
+
+  /* Surface */
+  --color-surface:                  #fbf8ff;
+  --color-surface-bright:           #fbf8ff;
+  --color-surface-dim:              #d4d8fe;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low:    #f4f2ff;
+  --color-surface-container:        #ececff;
+  --color-surface-container-high:   #e5e6ff;
+  --color-surface-container-highest:#dee0ff;
+  --color-surface-variant:          #dee0ff;
+  --color-surface-tint:             #0058c9;
+  --color-inverse-surface:          #292e4c;
+  --color-inverse-on-surface:       #f0efff;
+
+  /* On Surface */
+  --color-on-surface:               #141936;
+  --color-on-surface-variant:       #424654;
+  --color-on-background:            #141936;
+
+  /* Outline */
+  --color-outline:                  #727785;
+  --color-outline-variant:          #c2c6d6;
+
+  /* Error */
+  --color-error:                    #ba1a1a;
+  --color-on-error:                 #ffffff;
+  --color-error-container:          #ffdad6;
+  --color-on-error-container:       #93000a;
+
+  /* Font families */
+  --font-headline: 'Plus Jakarta Sans', sans-serif;
+  --font-body:     'Inter', sans-serif;
+  --font-label:    'Inter', sans-serif;
+  --font-sans:     'Inter', sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ── Global body ────────────────────────────────────────────────────────── */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ── Font utility classes (matching HTML) ───────────────────────────────── */
+.plusJakartaSans { font-family: 'Plus Jakarta Sans', sans-serif; }
+.inter           { font-family: 'Inter', sans-serif; }
+
+/* ── Material Symbols icon font defaults ────────────────────────────────── */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── AI Panel collapse/expand transition ────────────────────────────────── */
+.ai-panel {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.4s ease;
+}
+.ai-panel.visible {
+  max-height: 900px;
+  opacity: 1;
+}
+
+/* ── Shimmer loading animation ──────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.shimmer-line {
+  background: linear-gradient(90deg, #e5e6ff 25%, #f4f2ff 50%, #e5e6ff 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* ── Spinner for AI loading ─────────────────────────────────────────────── */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.animate-spin {
+  animation: spin 1s linear infinite;
 }
