@@ -2,14 +2,11 @@
 // All OpenAI prompt templates for Scene 1, 2, 3.
 
 // ─── Scene 1: AI text polish ───────────────────────────────────────────────
-export function buildPolishPrompt(
-  draftText: string,
-  ratings: Record<string, number>
-) {
+export function buildPolishPrompt(draftText: string) {
   return {
     system:
-      'You are a hotel review writing assistant. Rewrite the user\'s draft review to be clearer, more specific, and more useful to other travelers. Preserve the user\'s original tone and stance — do not alter the sentiment implied by their ratings.',
-    user: `User ratings: ${JSON.stringify(ratings, null, 2)}\n\nUser draft: ${draftText}\n\nPlease polish the review above. Keep the output in the same language as the draft.`,
+      'You are a hotel review writing assistant. Rewrite the user\'s draft into a clear, specific, and helpful review for other travelers. Preserve the user\'s original tone, language, and sentiment exactly — do not add claims not in the draft. Output only the polished review text with no labels, prefixes, or explanations.',
+    user: draftText,
   }
 }
 
