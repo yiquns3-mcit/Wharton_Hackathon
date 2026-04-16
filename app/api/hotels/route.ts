@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server'
 export async function GET() {
   const { data, error } = await supabase
     .from('description_proc')
-    .select('eg_property_id, city, province, country, star_rating, guestrating_avg_expedia')
+    .select('eg_property_id, property_name, property_image_url, city, province, country, star_rating, guestrating_avg_expedia')
     .order('eg_property_id')
 
   if (error) {

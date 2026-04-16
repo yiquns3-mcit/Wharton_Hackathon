@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Hotel {
   eg_property_id: string
+  property_name: string | null
+  property_image_url: string | null
   city: string
   province: string
   country: string
@@ -19,6 +21,31 @@ interface AiQuestion {
 }
 
 type AiPanelState = 'hidden' | 'loading' | 'result'
+
+const FEATURE_LABELS: Record<string, string> = {
+  checkin: 'Check-in',
+  overall: 'Overall',
+  service: 'Service',
+  location: 'Location',
+  roomcomfort: 'Room Comfort',
+  roomquality: 'Room Quality',
+  communication: 'Communication',
+  onlinelisting: 'Online Listing',
+  valueformoney: 'Value for Money',
+  hotelcondition: 'Hotel Condition',
+  ecofriendliness: 'Eco-friendliness',
+  roomcleanliness: 'Room Cleanliness',
+  roomamenitiesscore: 'Room Amenities',
+  convenienceoflocation: 'Location Convenience',
+  neighborhoodsatisfaction: 'Neighborhood',
+}
+
+const ALL_FEATURES = [
+  'checkin', 'overall', 'service', 'location', 'roomcomfort', 'roomquality',
+  'communication', 'onlinelisting', 'valueformoney', 'hotelcondition',
+  'ecofriendliness', 'roomcleanliness', 'roomamenitiesscore',
+  'convenienceoflocation', 'neighborhoodsatisfaction',
+]
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -104,20 +131,25 @@ function StarQuestion({
   feature,
   ratings,
   setRating,
+  badge,
 }: {
   label: string
   feature: string
   ratings: Record<string, number>
   setRating: (feature: string, value: number) => void
+  badge?: React.ReactNode
 }) {
   const [hovered, setHovered] = useState(0)
   const current = ratings[feature] ?? 0
 
   return (
     <div className="space-y-3">
-      <label className="text-base font-semibold block" style={{ color: '#141936' }}>
-        {label}
-      </label>
+      <div className="flex items-center gap-2">
+        <label className="text-base font-semibold" style={{ color: '#141936' }}>
+          {label}
+        </label>
+        {badge}
+      </div>
       <div className="flex gap-2 items-center">
         {[1, 2, 3, 4, 5].map(star => {
           const filled = (hovered || current) >= star
@@ -148,6 +180,59 @@ function StarQuestion({
             style={{ color: '#727785' }}
           >
             Clear
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CompactStarCard({
+  feature,
+  ratings,
+  setRating,
+}: {
+  feature: string
+  ratings: Record<string, number>
+  setRating: (feature: string, value: number) => void
+}) {
+  const [hovered, setHovered] = useState(0)
+  const current = ratings[feature] ?? 0
+  const label = FEATURE_LABELS[feature] ?? feature
+
+  return (
+    <div className="p-3 rounded-xl space-y-2" style={{ backgroundColor: '#f4f2ff' }}>
+      <span className="text-xs font-semibold block" style={{ color: '#424654' }}>{label}</span>
+      <div className="flex gap-1 items-center">
+        {[1, 2, 3, 4, 5].map(star => {
+          const filled = (hovered || current) >= star
+          return (
+            <button
+              key={star}
+              type="button"
+              onMouseEnter={() => setHovered(star)}
+              onMouseLeave={() => setHovered(0)}
+              onClick={() => setRating(feature, star)}
+              className="material-symbols-outlined text-xl transition-colors cursor-pointer select-none"
+              style={{
+                color: filled ? '#ffe25f' : '#c2c6d6',
+                fontVariationSettings: filled
+                  ? "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20"
+                  : "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20",
+              }}
+            >
+              star
+            </button>
+          )
+        })}
+        {current > 0 && (
+          <button
+            type="button"
+            onClick={() => setRating(feature, 0)}
+            className="text-xs ml-0.5 self-center transition-colors"
+            style={{ color: '#727785' }}
+          >
+            ×
           </button>
         )}
       </div>
@@ -240,6 +325,11 @@ export default function ReviewPage() {
   const [aiPanelState, setAiPanelState]     = useState<AiPanelState>('hidden')
   const [polishedText, setPolishedText]     = useState('')
 
+  // Two-tier rating + follow-up questions
+  const [topFeatures, setTopFeatures]               = useState<string[]>([])
+  const [showOptionalRatings, setShowOptionalRatings] = useState(false)
+  const [followUpAnswers, setFollowUpAnswers]         = useState<Record<string, string>>({})
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null)
   const textareaRef    = useRef<HTMLTextAreaElement>(null)
@@ -266,6 +356,7 @@ export default function ReviewPage() {
     const res = await fetch(`/api/hotels/${id}/questions`)
     const data = await res.json()
     setQuestions(data.ai_questions ?? [])
+    setTopFeatures(data.top_features ?? [])
     setLoadingQuestions(false)
   }, [hotels])
 
@@ -325,8 +416,10 @@ export default function ReviewPage() {
     rec.interimResults = false
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const transcript = Array.from(e.results).map((r: any) => r[0].transcript).join('')
+      let transcript = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        transcript += e.results[i][0].transcript
+      }
       setReviewText(prev => prev + transcript)
     }
     rec.onend = () => setListening(false)
@@ -358,6 +451,18 @@ export default function ReviewPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedId || !termsAccepted) return
+
+    // Validate required features
+    const requiredFeatures = topFeatures.length >= 2
+      ? [...new Set(['overall', ...topFeatures.slice(0, 2)])]
+      : ['overall', 'service']
+    for (const f of requiredFeatures) {
+      if ((ratings[f] ?? 0) === 0) {
+        alert(`Please rate "${FEATURE_LABELS[f] ?? f}" before submitting.`)
+        return
+      }
+    }
+
     setSubmitting(true)
 
     // Build full 15-key rating object — 0 = not rated (never a score)
@@ -371,6 +476,18 @@ export default function ReviewPage() {
       if (k in fullRating) fullRating[k] = v
     }
 
+    // Append follow-up Q&A answers to review text
+    let finalText = reviewText
+    const appendedAnswers = Object.entries(followUpAnswers)
+      .filter(([, v]) => v.trim())
+      .map(([feature, answer]) => {
+        const q = questions.find(q => q.feature === feature)
+        return q ? `${q.question}\n${answer}` : answer
+      })
+    if (appendedAnswers.length > 0) {
+      finalText = (finalText.trim() ? finalText.trim() + '\n\n' : '') + appendedAnswers.join('\n\n')
+    }
+
     const res = await fetch('/api/reviews', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -378,7 +495,7 @@ export default function ReviewPage() {
         eg_property_id: selectedId,
         rating: fullRating,
         review_title: reviewTitle || null,
-        review_text:  reviewText  || null,
+        review_text:  finalText  || null,
         images,
       }),
     })
@@ -396,6 +513,7 @@ export default function ReviewPage() {
     setSubmitted(false); setSelectedId(''); setSelectedHotel(null)
     setQuestions([]); setRatings({}); setReviewText(''); setReviewTitle('')
     setImages([]); setTermsAccepted(false); setAiPanelState('hidden'); setPolishedText('')
+    setTopFeatures([]); setShowOptionalRatings(false); setFollowUpAnswers({})
   }
 
   // ── Success screen ─────────────────────────────────────────────────────────
@@ -467,7 +585,8 @@ export default function ReviewPage() {
                 <option value="">— Select a property —</option>
                 {hotels.map(h => (
                   <option key={h.eg_property_id} value={h.eg_property_id}>
-                    {h.eg_property_id} · {h.city}, {h.country}
+                    {h.property_name ?? h.eg_property_id}
+                    {h.city ? ` · ${h.city}` : ''}
                     {h.star_rating ? ` ⭐ ${h.star_rating}` : ''}
                   </option>
                 ))}
@@ -481,10 +600,19 @@ export default function ReviewPage() {
             {/* Property header */}
             <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div className="flex items-center gap-6">
-                {/* Hotel avatar / placeholder */}
+                {/* Hotel avatar */}
                 <div className="w-24 h-24 rounded-xl overflow-hidden shadow-sm flex-shrink-0 flex items-center justify-center"
                      style={{ backgroundColor: '#e5e6ff' }}>
-                  <span className="material-symbols-outlined text-4xl" style={{ color: '#727785' }}>hotel</span>
+                  {selectedHotel?.property_image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={selectedHotel.property_image_url}
+                      alt={selectedHotel.property_name ?? ''}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="material-symbols-outlined text-4xl" style={{ color: '#727785' }}>hotel</span>
+                  )}
                 </div>
 
                 <div>
@@ -496,9 +624,7 @@ export default function ReviewPage() {
                   </nav>
 
                   <h1 className="text-3xl font-extrabold plusJakartaSans tracking-tight" style={{ color: '#141936' }}>
-                    {selectedHotel?.city
-                      ? `${selectedHotel.city}${selectedHotel.star_rating ? ` — ${selectedHotel.star_rating}★ Hotel` : ''}`
-                      : selectedId}
+                    {selectedHotel?.property_name ?? selectedHotel?.city ?? selectedId}
                   </h1>
 
                   <div className="flex items-center gap-2 mt-1">
@@ -538,44 +664,83 @@ export default function ReviewPage() {
 
                     <div className="space-y-10">
 
-                      {/* ── 1. AI Guided Star Questions ── */}
+                      {/* ── 1. Two-Tier Rating Module ── */}
                       <div className="space-y-6">
+                        <h3 className="text-base font-bold plusJakartaSans" style={{ color: '#141936' }}>
+                          Rate your stay
+                        </h3>
+
                         {loadingQuestions ? (
                           /* Loading shimmer */
-                          <div className="space-y-6">
-                            {[1, 2, 3].map(i => (
+                          <div className="space-y-4">
+                            {[1, 2].map(i => (
                               <div key={i} className="space-y-3">
-                                <div className="shimmer-line h-4 w-2/3" />
-                                <div className="shimmer-line h-8 w-48" />
+                                <div className="shimmer-line h-4 w-1/3" />
+                                <div className="shimmer-line h-8 w-40" />
                               </div>
                             ))}
                           </div>
-                        ) : questions.length === 0 ? (
-                          /* Fallback static questions if no AI questions yet */
-                          <>
-                            <StarQuestion
-                              label="How was your overall stay?"
-                              feature="overall"
-                              ratings={ratings}
-                              setRating={setRating}
-                            />
-                            <StarQuestion
-                              label="How would you rate the service?"
-                              feature="service"
-                              ratings={ratings}
-                              setRating={setRating}
-                            />
-                          </>
                         ) : (
-                          questions.map(q => (
-                            <StarQuestion
-                              key={q.feature}
-                              label={q.question}
-                              feature={q.feature}
-                              ratings={ratings}
-                              setRating={setRating}
-                            />
-                          ))
+                          <>
+                            {/* Tier 1 — Required features: always overall + top 2 */}
+                            <div className="space-y-4">
+                              {(topFeatures.length >= 2
+                                ? [...new Set(['overall', ...topFeatures.slice(0, 2)])]
+                                : ['overall', 'service']
+                              ).map(feature => (
+                                <StarQuestion
+                                  key={feature}
+                                  label={FEATURE_LABELS[feature] ?? feature}
+                                  feature={feature}
+                                  ratings={ratings}
+                                  setRating={setRating}
+                                  badge={
+                                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                                          style={{ backgroundColor: '#ffdad6', color: '#93000a' }}>
+                                      Required
+                                    </span>
+                                  }
+                                />
+                              ))}
+                            </div>
+
+                            {/* Tier 2 — Optional remaining features */}
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => setShowOptionalRatings(v => !v)}
+                                className="flex items-center gap-2 text-sm font-semibold transition-colors"
+                                style={{ color: '#0050b8' }}
+                              >
+                                <span className="material-symbols-outlined text-base">
+                                  {showOptionalRatings ? 'expand_less' : 'expand_more'}
+                                </span>
+                                Rate more aspects
+                                <span className="font-normal text-xs" style={{ color: '#727785' }}>(optional)</span>
+                              </button>
+
+                              {showOptionalRatings && (
+                                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                  {ALL_FEATURES
+                                    .filter(f => {
+                                      const required = topFeatures.length >= 2
+                                        ? [...new Set(['overall', ...topFeatures.slice(0, 2)])]
+                                        : ['overall', 'service']
+                                      return !required.includes(f)
+                                    })
+                                    .map(feature => (
+                                      <CompactStarCard
+                                        key={feature}
+                                        feature={feature}
+                                        ratings={ratings}
+                                        setRating={setRating}
+                                      />
+                                    ))
+                                  }
+                                </div>
+                              )}
+                            </div>
+                          </>
                         )}
                       </div>
 
@@ -754,7 +919,37 @@ export default function ReviewPage() {
                         </div>
                       </div>
 
-                      {/* ── 4. Photo upload ── */}
+                      {/* ── 4. Follow-up Questions ── */}
+                      {questions.length >= 2 && (
+                        <div className="space-y-6">
+                          <h3 className="text-base font-bold plusJakartaSans" style={{ color: '#141936' }}>
+                            A few more questions
+                          </h3>
+                          {[questions[0], questions[1]].map(q => (
+                            <div key={q.feature} className="space-y-2">
+                              <label className="text-sm font-semibold block" style={{ color: '#424654' }}>
+                                {q.question}
+                              </label>
+                              <textarea
+                                rows={3}
+                                placeholder="Share your thoughts…"
+                                className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none transition-all"
+                                style={{
+                                  backgroundColor: '#f4f2ff',
+                                  border: 'none',
+                                  color: '#141936',
+                                }}
+                                onFocus={e => { e.currentTarget.style.boxShadow = '0 0 0 2px #0050b8'; e.currentTarget.style.backgroundColor = '#fff' }}
+                                onBlur={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.backgroundColor = '#f4f2ff' }}
+                                value={followUpAnswers[q.feature] ?? ''}
+                                onChange={e => setFollowUpAnswers(prev => ({ ...prev, [q.feature]: e.target.value }))}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* ── 5. Photo upload ── */}
                       <div className="space-y-4">
                         <label className="text-sm font-semibold block" style={{ color: '#424654' }}>
                           Add photos
@@ -815,7 +1010,7 @@ export default function ReviewPage() {
                         )}
                       </div>
 
-                      {/* ── 5. Terms + Submit ── */}
+                      {/* ── 6. Terms + Submit ── */}
                       <div className="pt-6 flex flex-col md:flex-row items-center justify-between gap-6"
                            style={{ borderTop: '1px solid rgba(194,198,214,0.15)' }}>
                         <div className="flex items-start gap-3 max-w-sm">

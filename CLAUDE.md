@@ -151,22 +151,20 @@ This field is populated by the AI (OpenAI Scene 3 — see Section 7). It is neve
 
 ```json
 {
-  "area_description": 2,
-  "property_amenity_spa": 5,
-  "popular_amenities_list": 1,
-  "roomquality": 4,
-  "checkin": 0,
-  "valueformoney": 3
+  "checkin": 1,
+  "roomquality": 0,
+  "service": 1,
+  "valueformoney": 0,
+  "location": 1
 }
 ```
 
 Rules:
-- Keys come from **two sources**: (a) column names in `description_proc`, and (b) feature names from the `rating` JSONB.
-- Value `0` = the review text did not mention this feature/column at all.
-- Values `1–5` = the review mentioned this topic; score reflects alignment:
-  - For **description columns** (e.g. `area_description`): high score = review aligns with what the description claims; low score = review contradicts the description.
-  - For **rating features** (e.g. `roomquality`): high score = positive sentiment; low score = negative sentiment.
-- **Critical**: `text_analysis` and `rating` are kept completely separate. `text_analysis` is never merged into `rating`. They serve different purposes — `rating` is user intent, `text_analysis` is AI inference from text.
+- Keys are strictly the 15 keys from `RATING_FEATURES` (same set as in the `rating` JSONB). No `description_proc` column names appear here.
+- Value `0` = the review text did not mention this feature at all.
+- Value `1` = the review mentions content related to this feature.
+- This is a **mention flag**, not a sentiment or alignment score.
+- **Critical**: `text_analysis` and `rating` are kept completely separate. `text_analysis` is never merged into `rating`. They serve different purposes — `rating` is user intent, `text_analysis` is AI-detected mention coverage.
 
 #### `images` TEXT[]
 
@@ -315,34 +313,27 @@ ${topFeatures.join(', ')}
 `
 ```
 
-### Scene 3 — Review text alignment analysis (`/api/analyze`, `/api/batch-analyze`)
+### Scene 3 — Review mention-flag analysis (`/api/analyze`, `/api/batch-analyze`)
 - **Trigger A**: New review submitted via Page 1 → async call after writing to DB.
-- **Trigger B**: Admin clicks "批量分析历史评论" in Page 2 → `/api/batch-analyze` processes all reviews with empty `text_analysis` one by one.
+- **Trigger B**: Admin clicks "Run Batch Analysis" in Page 2 → `/api/batch-analyze` processes reviews sequentially. Pass `force: true` to re-process all reviews, including those already analyzed.
 - **Model**: `gpt-4o`
-- **Input**: `review_text` + all `description_proc` column values for that hotel + fixed list of rating feature names.
-- **Output**: JSON object where keys are `description_proc` column names OR rating feature names, values are 0–5.
+- **Input**: `review_text` + fixed list of `RATING_FEATURES` (15 keys). Hotel description is NOT passed to this prompt.
+- **Output**: JSON object with exactly the 15 `RATING_FEATURES` keys, values `0` (not mentioned) or `1` (mentioned).
 - **Storage**: written to `reviews_proc.text_analysis` for that review.
 
 ```ts
 // Prompt structure
-system: `你是一个酒店评论分析助手。只返回合法 JSON，不输出任何其他内容，不要加 markdown 代码块。`
+system: "You are a hotel review analysis assistant. Return only valid JSON with no markdown fences or extra text."
 user: `
-以下是酒店的描述信息（按字段分组）：
-${hotelDescriptionJson}
-
-Rating 中的功能点名称列表：
+The following is a list of hotel rating features:
 ${ratingFeatureNames.join(', ')}
 
-以下是一条用户评论：
+Review text:
 "${reviewText}"
 
-请分析这条评论涉及了哪些字段或功能点，并给出 1-5 分：
-- 针对描述字段（如 area_description）：评论内容与描述相符→高分，相左→低分
-- 针对 rating 功能点（如 roomquality）：正面评价→高分，负面→低分
-- 未提及的字段或功能点→ 0
-
-返回格式：{"字段名或功能点名": 分数, ...}
-只输出 JSON，不输出任何解释。
+For each feature, output 1 if the review mentions anything related to that feature, or 0 if it does not.
+Return format: {"feature_name": 0 or 1, ...}
+Output JSON only.
 `
 ```
 

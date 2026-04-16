@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { openai } from '@/lib/openai'
 import { RATING_FEATURES } from '@/lib/scoring'
 import { buildAnalysisPrompt, stripMarkdownFences } from '@/lib/prompts'
-import { fetchHotelDescription, updateHotelAnalysis } from '@/lib/hotelAnalysisUpdater'
+import { updateHotelAnalysis } from '@/lib/hotelAnalysisUpdater'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
@@ -29,13 +29,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Review has no text to analyse' }, { status: 400 })
   }
 
-  // 2. Fetch hotel description
-  const hotelDesc = await fetchHotelDescription(review.eg_property_id)
-
-  // 3. Call Scene 3
+  // 2. Call Scene 3
   const { system, user } = buildAnalysisPrompt(
     review.review_text,
-    hotelDesc,
     [...RATING_FEATURES]
   )
 

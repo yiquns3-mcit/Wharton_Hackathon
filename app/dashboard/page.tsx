@@ -8,6 +8,7 @@ import {
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface Hotel {
   eg_property_id: string
+  property_name: string | null
   city: string
   province: string
   country: string
@@ -39,11 +40,21 @@ interface SseEvent {
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 const FEATURE_LABELS: Record<string, string> = {
-  checkin: '入住', overall: '总体', service: '服务', location: '位置',
-  roomcomfort: '房间舒适', roomquality: '房间质量', communication: '沟通',
-  onlinelisting: '在线描述', valueformoney: '性价比', hotelcondition: '酒店状况',
-  ecofriendliness: '环保', roomcleanliness: '房间清洁', roomamenitiesscore: '房间设施',
-  convenienceoflocation: '位置便利', neighborhoodsatisfaction: '周边满意度',
+  checkin: 'Check-in',
+  overall: 'Overall',
+  service: 'Service',
+  location: 'Location',
+  roomcomfort: 'Room Comfort',
+  roomquality: 'Room Quality',
+  communication: 'Communication',
+  onlinelisting: 'Online Listing',
+  valueformoney: 'Value for Money',
+  hotelcondition: 'Hotel Condition',
+  ecofriendliness: 'Eco-friendliness',
+  roomcleanliness: 'Room Cleanliness',
+  roomamenitiesscore: 'Room Amenities',
+  convenienceoflocation: 'Location Convenience',
+  neighborhoodsatisfaction: 'Neighborhood',
 }
 
 const toChartData = (record: Record<string, number>) =>
@@ -52,31 +63,210 @@ const toChartData = (record: Record<string, number>) =>
     value: Math.round(val * 100),
   }))
 
+// ─── Sub-components ─────────────────────────────────────────────────────────
+
+function NavBar() {
+  return (
+    <nav className="bg-white sticky top-0 z-50"
+         style={{ borderBottom: '1px solid rgba(194,198,214,0.3)' }}>
+      <div className="flex justify-between items-center w-full px-6 py-3 max-w-screen-2xl mx-auto">
+        <div className="flex items-center gap-4">
+          <span className="text-2xl font-black plusJakartaSans" style={{ color: '#0050b8' }}>
+            Expedia
+          </span>
+          <span className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full"
+                style={{ backgroundColor: '#f4f2ff', color: '#0050b8' }}>
+            <span className="material-symbols-outlined text-sm">admin_panel_settings</span>
+            Admin Dashboard
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="material-symbols-outlined text-sm"
+                style={{ color: '#727785' }}>
+            lock
+          </span>
+          <span className="text-sm font-medium" style={{ color: '#424654' }}>Internal only</span>
+        </div>
+      </div>
+    </nav>
+  )
+}
+
+function Footer() {
+  const cols = [
+    { title: 'Company', links: ['About', 'Jobs', 'Advertising'] },
+    { title: 'Legal',   links: ['Privacy Policy', 'Terms of Use', 'Accessibility'] },
+    { title: 'Support', links: ['Help Center', 'Cancel booking', 'Refund timelines'] },
+    { title: 'Connect', links: ['Facebook', 'Twitter', 'Instagram'] },
+  ]
+  return (
+    <footer className="w-full py-12 px-6 flex flex-col md:flex-row justify-between mt-12 border-t"
+            style={{ backgroundColor: '#f4f2ff', borderTopColor: '#c2c6d6' }}>
+      <div className="max-w-screen-2xl mx-auto w-full flex flex-col md:flex-row justify-between gap-8">
+        <div className="mb-8 md:mb-0">
+          <span className="text-lg font-bold plusJakartaSans" style={{ color: '#0050b8' }}>Expedia</span>
+          <p className="inter text-xs leading-relaxed text-slate-500 mt-4 max-w-xs">
+            © 2024 Expedia, Inc., an Expedia Group company. All rights reserved.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
+          {cols.map(col => (
+            <div key={col.title} className="flex flex-col gap-3">
+              <span className="font-bold text-sm mb-1" style={{ color: '#141936' }}>{col.title}</span>
+              {col.links.map(link => (
+                <a key={link} href="#"
+                   className="inter text-xs leading-relaxed text-slate-500 hover:underline hover:text-[#0050b8] transition-colors">
+                  {link}
+                </a>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </footer>
+  )
+}
+
+function SummaryCard({ title, value, icon }: { title: string; value: string | number; icon: string }) {
+  return (
+    <div className="bg-white rounded-xl p-6 shadow-sm"
+         style={{ border: '1px solid rgba(194,198,214,0.3)' }}>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="material-symbols-outlined text-lg" style={{ color: '#0050b8' }}>{icon}</span>
+        <p className="text-sm font-medium" style={{ color: '#424654' }}>{title}</p>
+      </div>
+      <p className="text-2xl font-extrabold plusJakartaSans" style={{ color: '#141936' }}>{value}</p>
+    </div>
+  )
+}
+
+function Section({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6"
+         style={{ border: '1px solid rgba(194,198,214,0.3)' }}>
+      <div className="flex items-center gap-2 mb-5">
+        <span className="material-symbols-outlined text-xl" style={{ color: '#0050b8' }}>{icon}</span>
+        <h2 className="text-base font-bold plusJakartaSans" style={{ color: '#141936' }}>{title}</h2>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function ChartCard({ title, subtitle, data, color }: {
+  title: string
+  subtitle: string
+  data: { name: string; value: number }[]
+  color: string
+}) {
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6"
+         style={{ border: '1px solid rgba(194,198,214,0.3)' }}>
+      <h2 className="text-sm font-bold plusJakartaSans mb-1" style={{ color: '#141936' }}>{title}</h2>
+      <p className="text-xs mb-4" style={{ color: '#727785' }}>{subtitle}</p>
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+          <XAxis
+            type="number"
+            domain={[0, 100]}
+            tickFormatter={(v) => `${v}%`}
+            tick={{ fontSize: 10, fill: '#727785', fontFamily: 'Inter' }}
+            axisLine={{ stroke: '#c2c6d6' }}
+            tickLine={false}
+          />
+          <YAxis
+            type="category"
+            dataKey="name"
+            width={88}
+            tick={{ fontSize: 10, fill: '#424654', fontFamily: 'Inter' }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip
+            formatter={(v) => [`${v}%`]}
+            contentStyle={{
+              backgroundColor: '#fff',
+              border: '1px solid rgba(194,198,214,0.5)',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontFamily: 'Inter',
+              color: '#141936',
+            }}
+            cursor={{ fill: 'rgba(0,80,184,0.04)' }}
+          />
+          <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+            {data.map((_, i) => <Cell key={i} fill={color} />)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function SliderRow({ label, sublabel, value, onChange, auto }: {
+  label: string
+  sublabel: string
+  value: number
+  onChange?: (v: number) => void
+  auto?: boolean
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between items-end">
+        <div>
+          <p className="text-sm font-semibold" style={{ color: '#141936' }}>{label}</p>
+          <p className="text-xs" style={{ color: '#727785' }}>{sublabel}</p>
+        </div>
+        <span className="text-base font-extrabold plusJakartaSans" style={{ color: '#0050b8' }}>
+          {value.toFixed(1)}
+        </span>
+      </div>
+      {auto ? (
+        <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#f4f2ff' }}>
+          <div className="h-full rounded-full transition-all" style={{ width: `${value * 100}%`, backgroundColor: '#0050b8', opacity: 0.4 }} />
+        </div>
+      ) : (
+        <input
+          type="range"
+          min={0.1}
+          max={0.8}
+          step={0.1}
+          value={value}
+          onChange={(e) => onChange?.(parseFloat(e.target.value))}
+          className="w-full"
+          style={{ accentColor: '#0050b8' }}
+        />
+      )}
+      {auto && (
+        <p className="text-xs" style={{ color: '#727785' }}>Auto-calculated (= 1 − w1 − w2)</p>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [selectedId, setSelectedId] = useState('')
+  const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null)
   const [bi, setBi] = useState<BiData | null>(null)
   const [loading, setLoading] = useState(false)
 
-  // Weight slider state (local, uncommitted)
   const [w1, setW1] = useState(0.4)
   const [w2, setW2] = useState(0.3)
   const [w3, setW3] = useState(0.3)
 
-  // Batch analysis
   const [batchRunning, setBatchRunning] = useState(false)
   const [batchProgress, setBatchProgress] = useState<{ processed: number; total: number; failed: number } | null>(null)
+  const [forceReanalyze, setForceReanalyze] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
-  // Load hotels on mount
   useEffect(() => {
     fetch('/api/hotels')
       .then((r) => r.json())
       .then(setHotels)
   }, [])
 
-  // Load BI data when hotel selected
   const loadBi = useCallback(async (id: string) => {
     if (!id) return
     setLoading(true)
@@ -89,11 +279,14 @@ export default function DashboardPage() {
     setLoading(false)
   }, [])
 
-  useEffect(() => {
-    if (selectedId) loadBi(selectedId)
-  }, [selectedId, loadBi])
+  const handleHotelChange = (id: string) => {
+    setSelectedId(id)
+    setSelectedHotel(hotels.find(h => h.eg_property_id === id) ?? null)
+    setBi(null)
+    setBatchProgress(null)
+    if (id) loadBi(id)
+  }
 
-  // Slider helpers — keep sum = 1, adjust w3 as remainder
   const handleW1 = (v: number) => {
     const clamped = Math.min(v, 1 - w2 - 0.1)
     setW1(Math.round(clamped * 10) / 10)
@@ -105,7 +298,6 @@ export default function DashboardPage() {
     setW3(Math.round((1 - w1 - clamped) * 10) / 10)
   }
 
-  // Apply weights → POST /api/bi/[id]
   const applyWeights = async () => {
     if (!selectedId) return
     setLoading(true)
@@ -119,7 +311,6 @@ export default function DashboardPage() {
     setLoading(false)
   }
 
-  // Batch analysis via SSE
   const startBatch = async () => {
     if (!selectedId || batchRunning) return
     setBatchRunning(true)
@@ -131,7 +322,7 @@ export default function DashboardPage() {
     const res = await fetch('/api/batch-analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eg_property_id: selectedId }),
+      body: JSON.stringify({ eg_property_id: selectedId, force: forceReanalyze }),
       signal: ctrl.signal,
     })
 
@@ -158,7 +349,7 @@ export default function DashboardPage() {
           }
           if (evt.type === 'done') {
             setBatchRunning(false)
-            loadBi(selectedId) // refresh data
+            loadBi(selectedId)
           }
         } catch { /* ignore parse errors */ }
       }
@@ -168,211 +359,310 @@ export default function DashboardPage() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen flex flex-col inter" style={{ backgroundColor: '#fbf8ff', color: '#141936' }}>
+      <NavBar />
 
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-800">📊 酒店评论 BI 分析台</h1>
-          <select
-            className="border rounded-lg px-4 py-2 bg-white shadow-sm text-sm"
-            value={selectedId}
-            onChange={(e) => setSelectedId(e.target.value)}
-          >
-            <option value="">— 选择酒店 —</option>
-            {hotels.map((h) => (
-              <option key={h.eg_property_id} value={h.eg_property_id}>
-                {h.eg_property_id} · {h.city}, {h.country} ⭐{h.star_rating}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {!selectedId && (
-          <div className="text-center py-24 text-gray-400">请选择一家酒店以查看分析数据</div>
-        )}
-
-        {selectedId && loading && (
-          <div className="text-center py-24 text-gray-400 animate-pulse">加载中...</div>
-        )}
-
-        {selectedId && !loading && bi && (
-          <>
-            {/* Summary cards */}
-            <div className="grid grid-cols-3 gap-4">
-              <Card title="评论总数" value={bi.total_reviews} />
-              <Card
-                title="文本分析覆盖率"
-                value={`${(bi.text_analysis_coverage * 100).toFixed(1)}%`}
-              />
-              <Card
-                title="上次更新"
-                value={bi.last_updated ? new Date(bi.last_updated).toLocaleString('zh-CN') : '从未'}
-              />
+      <main className="flex-1">
+        {/* ── Page header + hotel selector ── */}
+        <div className="max-w-6xl mx-auto px-6 pt-10 pb-6">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <span className="material-symbols-outlined text-3xl" style={{ color: '#0050b8' }}>analytics</span>
+                <h1 className="text-3xl font-extrabold plusJakartaSans" style={{ color: '#141936' }}>
+                  Hotel Review Analytics
+                </h1>
+              </div>
+              <p className="text-sm" style={{ color: '#424654' }}>
+                Data quality metrics and priority scoring for hotel reviews
+              </p>
             </div>
 
-            {/* Priority ranking */}
-            <Section title="🏆 优先级排名（综合得分）">
-              <div className="space-y-2">
-                {bi.top_features.map((f, i) => (
-                  <div key={f} className="flex items-center gap-3">
-                    <span className="w-6 text-sm font-bold text-gray-500">{i + 1}</span>
-                    <span className="w-40 text-sm">{FEATURE_LABELS[f] ?? f}</span>
-                    <div className="flex-1 bg-gray-200 rounded-full h-3">
-                      <div
-                        className="bg-indigo-500 h-3 rounded-full transition-all"
-                        style={{ width: `${Math.max(bi.priority_scores[f] * 100, 2)}%` }}
-                      />
-                    </div>
-                    <span className="w-16 text-right text-sm text-gray-600">
-                      {bi.priority_scores[f].toFixed(3)}
-                    </span>
+            {/* Hotel selector */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold" style={{ color: '#424654' }}>Select property</label>
+              <select
+                className="px-4 py-3 rounded-xl text-sm outline-none transition-all min-w-64"
+                style={{
+                  backgroundColor: '#f4f2ff',
+                  border: '1px solid #c2c6d6',
+                  color: '#141936',
+                }}
+                onFocus={e => { e.currentTarget.style.boxShadow = '0 0 0 2px #0050b8'; e.currentTarget.style.backgroundColor = '#fff' }}
+                onBlur={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.backgroundColor = '#f4f2ff' }}
+                value={selectedId}
+                onChange={(e) => handleHotelChange(e.target.value)}
+              >
+                <option value="">— Select a property —</option>
+                {hotels.map((h) => (
+                  <option key={h.eg_property_id} value={h.eg_property_id}>
+                    {h.property_name ?? h.eg_property_id}
+                    {h.city ? ` · ${h.city}` : ''}
+                    {h.star_rating ? ` ⭐ ${h.star_rating}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-6xl mx-auto px-6 pb-16 space-y-6">
+
+          {/* ── Empty state ── */}
+          {!selectedId && (
+            <div className="text-center py-24">
+              <span className="material-symbols-outlined text-5xl block mb-4"
+                    style={{ color: '#c2c6d6', fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 48" }}>
+                bar_chart
+              </span>
+              <p className="text-base font-medium" style={{ color: '#727785' }}>
+                Select a property above to view analytics
+              </p>
+            </div>
+          )}
+
+          {/* ── Loading shimmer ── */}
+          {selectedId && loading && !bi && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-3 gap-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="bg-white rounded-xl p-6 shadow-sm space-y-3"
+                       style={{ border: '1px solid rgba(194,198,214,0.3)' }}>
+                    <div className="shimmer-line h-3 w-1/2" />
+                    <div className="shimmer-line h-7 w-2/3" />
                   </div>
                 ))}
               </div>
-            </Section>
-
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <ChartCard
-                title="缺失率（越高越需要补充）"
-                data={toChartData(bi.dimensions.missing_rate)}
-                color="#f59e0b"
-              />
-              <ChartCard
-                title="时间置信度（越低越需要更新）"
-                data={toChartData(bi.dimensions.time_confidence)}
-                color="#6366f1"
-              />
-              <ChartCard
-                title="文本覆盖率（越高已有描述）"
-                data={toChartData(bi.dimensions.text_coverage)}
-                color="#10b981"
-              />
-            </div>
-
-            {/* Weight sliders */}
-            <Section title="⚖️ 权重调节">
-              <div className="grid grid-cols-3 gap-6 mb-4">
-                <Slider label={`w1 缺失率权重 (${w1.toFixed(1)})`} value={w1} onChange={handleW1} />
-                <Slider label={`w2 时间衰减权重 (${w2.toFixed(1)})`} value={w2} onChange={handleW2} />
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">
-                    w3 文本覆盖权重 ({w3.toFixed(1)}) — 自动计算
-                  </label>
-                  <div className="h-2 bg-gray-200 rounded-full">
-                    <div
-                      className="h-2 bg-emerald-400 rounded-full"
-                      style={{ width: `${w3 * 100}%` }}
-                    />
-                  </div>
-                </div>
+              <div className="bg-white rounded-xl p-6 shadow-sm space-y-4"
+                   style={{ border: '1px solid rgba(194,198,214,0.3)' }}>
+                <div className="shimmer-line h-4 w-1/4" />
+                {[1,2,3,4,5].map(i => (
+                  <div key={i} className="shimmer-line h-4 w-full" />
+                ))}
               </div>
-              <p className="text-xs text-gray-400 mb-3">w1 + w2 + w3 = {(w1 + w2 + w3).toFixed(1)}</p>
-              <button
-                onClick={applyWeights}
-                className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition"
-              >
-                应用权重 & 重新计算
-              </button>
-            </Section>
+            </div>
+          )}
 
-            {/* Batch analysis */}
-            <Section title="🔄 批量历史评论分析">
-              <p className="text-sm text-gray-500 mb-3">
-                对该酒店所有尚未分析的评论运行 Scene 3（text_analysis 为空的记录）。
-              </p>
-              {batchProgress && (
-                <div className="mb-3">
-                  <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <span>
-                      {batchProgress.processed} / {batchProgress.total} 条
-                      {batchProgress.failed > 0 && (
-                        <span className="text-red-500 ml-2">失败 {batchProgress.failed} 条</span>
-                      )}
+          {/* ── Dashboard content ── */}
+          {selectedId && bi && (
+            <>
+              {/* Selected hotel info bar */}
+              {selectedHotel && (
+                <div className="flex items-center gap-3 px-1">
+                  <span className="material-symbols-outlined text-base" style={{ color: '#0050b8' }}>hotel</span>
+                  <span className="text-sm font-semibold" style={{ color: '#141936' }}>
+                    {selectedHotel.property_name ?? selectedHotel.eg_property_id}
+                  </span>
+                  {selectedHotel.city && (
+                    <span className="text-sm" style={{ color: '#424654' }}>
+                      · {[selectedHotel.city, selectedHotel.province, selectedHotel.country].filter(Boolean).join(', ')}
                     </span>
-                    <span>{batchProgress.total > 0
-                      ? Math.round((batchProgress.processed / batchProgress.total) * 100)
-                      : 0}%
+                  )}
+                  {loading && (
+                    <span className="material-symbols-outlined text-base animate-spin ml-auto" style={{ color: '#0050b8' }}>
+                      progress_activity
                     </span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-indigo-500 h-2 rounded-full transition-all"
-                      style={{
-                        width: batchProgress.total > 0
-                          ? `${(batchProgress.processed / batchProgress.total) * 100}%`
-                          : '0%',
-                      }}
-                    />
-                  </div>
+                  )}
                 </div>
               )}
-              <button
-                onClick={startBatch}
-                disabled={batchRunning}
-                className="px-5 py-2 bg-amber-500 text-white rounded-lg text-sm hover:bg-amber-600 transition disabled:opacity-50"
-              >
-                {batchRunning ? '分析中...' : '开始批量分析历史评论'}
-              </button>
-            </Section>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
 
-// ─── Sub-components ─────────────────────────────────────────────────────────
-function Card({ title, value }: { title: string; value: string | number }) {
-  return (
-    <div className="bg-white rounded-xl shadow-sm p-5 border">
-      <p className="text-sm text-gray-500">{title}</p>
-      <p className="text-2xl font-bold text-gray-800 mt-1">{value}</p>
-    </div>
-  )
-}
+              {/* Summary cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <SummaryCard
+                  title="Total Reviews"
+                  value={bi.total_reviews}
+                  icon="reviews"
+                />
+                <SummaryCard
+                  title="AI Analysis Coverage"
+                  value={`${(bi.text_analysis_coverage * 100).toFixed(1)}%`}
+                  icon="psychology"
+                />
+                <SummaryCard
+                  title="Last Updated"
+                  value={bi.last_updated ? new Date(bi.last_updated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never'}
+                  icon="update"
+                />
+              </div>
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white rounded-xl shadow-sm p-5 border">
-      <h2 className="text-base font-semibold text-gray-700 mb-4">{title}</h2>
-      {children}
-    </div>
-  )
-}
+              {/* Priority ranking */}
+              <Section title="Priority Ranking" icon="leaderboard">
+                <p className="text-xs mb-5" style={{ color: '#727785' }}>
+                  Features ranked by composite priority score — higher score means more data is needed.
+                </p>
+                <div className="space-y-3">
+                  {bi.top_features.map((f, i) => (
+                    <div key={f} className="flex items-center gap-4">
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                           style={{ backgroundColor: i === 0 ? '#0050b8' : '#f4f2ff', color: i === 0 ? '#fff' : '#0050b8' }}>
+                        {i + 1}
+                      </div>
+                      <span className="w-36 text-sm font-medium flex-shrink-0" style={{ color: '#141936' }}>
+                        {FEATURE_LABELS[f] ?? f}
+                      </span>
+                      <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ backgroundColor: '#f4f2ff' }}>
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${Math.max(bi.priority_scores[f] * 100, 2)}%`,
+                            backgroundColor: '#0050b8',
+                            opacity: 1 - i * 0.05,
+                          }}
+                        />
+                      </div>
+                      <span className="w-14 text-right text-sm font-semibold tabular-nums" style={{ color: '#424654' }}>
+                        {bi.priority_scores[f].toFixed(3)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Section>
 
-function ChartCard({ title, data, color }: { title: string; data: { name: string; value: number }[]; color: string }) {
-  return (
-    <div className="bg-white rounded-xl shadow-sm p-5 border">
-      <h2 className="text-sm font-semibold text-gray-700 mb-3">{title}</h2>
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={data} layout="vertical" margin={{ left: 16, right: 16 }}>
-          <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10 }} />
-          <YAxis type="category" dataKey="name" width={72} tick={{ fontSize: 10 }} />
-          <Tooltip formatter={(v) => [`${v}%`]} />
-          <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-            {data.map((_, i) => <Cell key={i} fill={color} />)}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
+              {/* Charts */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <ChartCard
+                  title="Missing Rate"
+                  subtitle="Higher = more reviews missing this score"
+                  data={toChartData(bi.dimensions.missing_rate)}
+                  color="#0050b8"
+                />
+                <ChartCard
+                  title="Time Confidence"
+                  subtitle="Lower = data is stale and needs refreshing"
+                  data={toChartData(bi.dimensions.time_confidence)}
+                  color="#585c7d"
+                />
+                <ChartCard
+                  title="Text Coverage"
+                  subtitle="Higher = topic already covered in review text"
+                  data={toChartData(bi.dimensions.text_coverage)}
+                  color="#10b981"
+                />
+              </div>
 
-function Slider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <div>
-      <label className="block text-sm text-gray-600 mb-1">{label}</label>
-      <input
-        type="range"
-        min={0.1}
-        max={0.8}
-        step={0.1}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full accent-indigo-600"
-      />
+              {/* Weight configuration */}
+              <Section title="Weight Configuration" icon="tune">
+                <p className="text-xs mb-6" style={{ color: '#727785' }}>
+                  Adjust how each dimension contributes to the priority score. w1 + w2 + w3 must equal 1.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-6">
+                  <SliderRow
+                    label="w1 — Missing Rate"
+                    sublabel="Weight for data completeness"
+                    value={w1}
+                    onChange={handleW1}
+                  />
+                  <SliderRow
+                    label="w2 — Time Decay"
+                    sublabel="Weight for data freshness"
+                    value={w2}
+                    onChange={handleW2}
+                  />
+                  <SliderRow
+                    label="w3 — Text Coverage"
+                    sublabel="Weight for text description coverage"
+                    value={w3}
+                    auto
+                  />
+                </div>
+                <div className="flex items-center justify-between pt-4"
+                     style={{ borderTop: '1px solid rgba(194,198,214,0.3)' }}>
+                  <p className="text-xs" style={{ color: '#727785' }}>
+                    w1 + w2 + w3 = <span className="font-bold" style={{ color: '#141936' }}>{(w1 + w2 + w3).toFixed(1)}</span>
+                  </p>
+                  <button
+                    onClick={applyWeights}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-full font-semibold text-sm text-white transition-all disabled:opacity-50"
+                    style={{ backgroundColor: '#0050b8' }}
+                    onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#00429a' }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#0050b8' }}
+                  >
+                    <span className="material-symbols-outlined text-base">refresh</span>
+                    Apply Weights & Recalculate
+                  </button>
+                </div>
+              </Section>
+
+              {/* Batch analysis */}
+              <Section title="Batch Historical Analysis" icon="batch_prediction">
+                <p className="text-sm mb-5" style={{ color: '#424654' }}>
+                  Run AI text analysis (Scene 3) on all reviews for this property that have not yet been analyzed.
+                  Check &ldquo;Re-analyze all&rdquo; to overwrite existing results.
+                </p>
+
+                {batchProgress && (
+                  <div className="mb-5 p-4 rounded-xl" style={{ backgroundColor: '#f4f2ff' }}>
+                    <div className="flex justify-between text-xs font-medium mb-2" style={{ color: '#424654' }}>
+                      <span>
+                        {batchProgress.processed} / {batchProgress.total} reviews processed
+                        {batchProgress.failed > 0 && (
+                          <span className="ml-3 font-semibold" style={{ color: '#ba1a1a' }}>
+                            {batchProgress.failed} failed
+                          </span>
+                        )}
+                      </span>
+                      <span style={{ color: '#0050b8' }}>
+                        {batchProgress.total > 0
+                          ? Math.round((batchProgress.processed / batchProgress.total) * 100)
+                          : 0}%
+                      </span>
+                    </div>
+                    <div className="w-full rounded-full h-2 overflow-hidden" style={{ backgroundColor: '#e5e6ff' }}>
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: batchProgress.total > 0
+                            ? `${(batchProgress.processed / batchProgress.total) * 100}%`
+                            : '0%',
+                          backgroundColor: '#0050b8',
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-4 flex-wrap">
+                  <button
+                    onClick={startBatch}
+                    disabled={batchRunning}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-full font-semibold text-sm text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: batchRunning ? '#727785' : '#0050b8' }}
+                    onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#00429a' }}
+                    onMouseLeave={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#0050b8' }}
+                  >
+                    {batchRunning ? (
+                      <>
+                        <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
+                        Analyzing…
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-base">play_arrow</span>
+                        Run Batch Analysis
+                      </>
+                    )}
+                  </button>
+
+                  <label className="flex items-center gap-2 text-sm cursor-pointer select-none" style={{ color: '#424654' }}>
+                    <input
+                      type="checkbox"
+                      checked={forceReanalyze}
+                      onChange={e => setForceReanalyze(e.target.checked)}
+                      disabled={batchRunning}
+                      className="w-4 h-4 rounded accent-blue-700"
+                    />
+                    Re-analyze all reviews
+                  </label>
+                </div>
+              </Section>
+            </>
+          )}
+
+        </div>
+      </main>
+
+      <Footer />
     </div>
   )
 }

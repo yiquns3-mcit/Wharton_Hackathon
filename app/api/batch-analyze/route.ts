@@ -6,17 +6,17 @@ import { supabase } from '@/lib/supabase'
 import { openai } from '@/lib/openai'
 import { RATING_FEATURES } from '@/lib/scoring'
 import { buildAnalysisPrompt, stripMarkdownFences } from '@/lib/prompts'
-import { fetchHotelDescription, updateHotelAnalysis } from '@/lib/hotelAnalysisUpdater'
+import { updateHotelAnalysis } from '@/lib/hotelAnalysisUpdater'
 import { NextRequest } from 'next/server'
 
 export async function POST(req: NextRequest) {
-  const { eg_property_id } = await req.json()
+  const { eg_property_id, force = false } = await req.json()
 
   if (!eg_property_id) {
     return new Response(JSON.stringify({ error: 'eg_property_id is required' }), { status: 400 })
   }
 
-  // Fetch reviews with empty text_analysis ({} or null)
+  // Fetch all reviews for this hotel
   const { data: reviews, error } = await supabase
     .from('reviews_proc')
     .select('review_id, review_text, text_analysis')
@@ -26,8 +26,9 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ error: error.message }), { status: 500 })
   }
 
-  // Filter: only reviews where text_analysis is empty ({}) or null
+  // When force=true, re-process all reviews; otherwise only those with empty text_analysis
   const pending = (reviews ?? []).filter((r) => {
+    if (force) return true
     const ta = r.text_analysis
     return !ta || Object.keys(ta).length === 0
   })
@@ -50,16 +51,6 @@ export async function POST(req: NextRequest) {
         return
       }
 
-      // Fetch hotel description once
-      let hotelDesc: Record<string, unknown>
-      try {
-        hotelDesc = await fetchHotelDescription(eg_property_id)
-      } catch (err) {
-        send({ type: 'error', message: String(err) })
-        controller.close()
-        return
-      }
-
       let processed = 0
       let failed = 0
 
@@ -73,7 +64,6 @@ export async function POST(req: NextRequest) {
         try {
           const { system, user } = buildAnalysisPrompt(
             review.review_text,
-            hotelDesc,
             [...RATING_FEATURES]
           )
 
