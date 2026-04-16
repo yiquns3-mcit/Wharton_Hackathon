@@ -362,6 +362,8 @@ export default function DashboardPage() {
 
   const [factGenRunning, setFactGenRunning] = useState(false)
   const [factGenMessage, setFactGenMessage] = useState<string | null>(null)
+  const [questionRegenRunning, setQuestionRegenRunning] = useState(false)
+  const [questionRegenMessage, setQuestionRegenMessage] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/hotels')
@@ -481,6 +483,30 @@ export default function DashboardPage() {
       setFactGenMessage(`Error: ${String(err)}`)
     }
     setFactGenRunning(false)
+  }
+
+  const handleRegenerateQuestions = async () => {
+    if (!selectedId || !bi) return
+    setQuestionRegenRunning(true)
+    setQuestionRegenMessage(null)
+    try {
+      const { w1, w2, w3 } = bi.weights
+      const res = await fetch(`/api/bi/${selectedId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ w1, w2, w3, force_questions: true }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setQuestionRegenMessage('✓ Gap questions regenerated.')
+        loadBi(selectedId)
+      } else {
+        setQuestionRegenMessage(`Error: ${data.error}`)
+      }
+    } catch (err) {
+      setQuestionRegenMessage(`Error: ${String(err)}`)
+    }
+    setQuestionRegenRunning(false)
   }
 
   const hasFactTags = (bi?.fact_inventory?.length ?? 0) > 0
@@ -898,6 +924,47 @@ export default function DashboardPage() {
                     {bi.fact_inventory.length} fact tags currently active
                   </p>
                 )}
+              </Section>
+
+              {/* Gap Question Regeneration */}
+              <Section title="Gap Questions" icon="help">
+                <p className="text-sm mb-5" style={{ color: '#424654' }}>
+                  Gap questions are shown to users on the review form. Regenerate them if the prompt or fact tags have changed.
+                </p>
+
+                {questionRegenMessage && (
+                  <div className="mb-4 p-3 rounded-lg"
+                       style={{
+                         backgroundColor: questionRegenMessage.startsWith('Error') ? '#fff0f0' : '#f0fdf4',
+                         border: `1px solid ${questionRegenMessage.startsWith('Error') ? '#fecaca' : '#bbf7d0'}`,
+                       }}>
+                    <p className="text-sm font-medium"
+                       style={{ color: questionRegenMessage.startsWith('Error') ? '#ba1a1a' : '#166534' }}>
+                      {questionRegenMessage}
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleRegenerateQuestions}
+                  disabled={questionRegenRunning}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-full font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: '#fff', color: '#0050b8', border: '1.5px solid #0050b8' }}
+                  onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#f4f2ff' }}
+                  onMouseLeave={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#fff' }}
+                >
+                  {questionRegenRunning ? (
+                    <>
+                      <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
+                      Regenerating…
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-base">refresh</span>
+                      Regenerate Gap Questions
+                    </>
+                  )}
+                </button>
               </Section>
             </>
           )}

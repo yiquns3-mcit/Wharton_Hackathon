@@ -37,7 +37,7 @@ export async function fetchHotelReviews(propertyId: string): Promise<ReviewRow[]
 }
 
 // Core auto-update logic
-export async function updateHotelAnalysis(propertyId: string, overrideWeights?: WeightConfig) {
+export async function updateHotelAnalysis(propertyId: string, overrideWeights?: WeightConfig, forceQuestions = false) {
   // 1. Read current state from hotel_analysis
   const { data: existing } = await supabase
     .from('hotel_analysis')
@@ -84,7 +84,7 @@ export async function updateHotelAnalysis(propertyId: string, overrideWeights?: 
 
   let gap_questions: Array<{ tag_id: string; fact_claim: string; question: string; gap_score: number }> | undefined
 
-  if (gapOrderChanged && topGapFacts.length > 0) {
+  if ((gapOrderChanged || forceQuestions) && topGapFacts.length > 0) {
     const { system, user } = buildGapQuestionsPrompt(
       topGapFacts.map((f) => ({
         tag_id: f.tag_id,

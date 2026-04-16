@@ -60,7 +60,7 @@ export async function POST(
   const eg_property_id = id
 
   const body = await req.json()
-  const { w1, w2, w3 } = body as { w1: number; w2: number; w3: number }
+  const { w1, w2, w3, force_questions = false } = body as { w1: number; w2: number; w3: number; force_questions?: boolean }
 
   // Validate weights sum to 1 (allow small float error)
   if (
@@ -78,7 +78,7 @@ export async function POST(
   const newWeights: WeightConfig = { w1, w2, w3 }
 
   try {
-    const result = await updateHotelAnalysis(eg_property_id, newWeights)
+    const result = await updateHotelAnalysis(eg_property_id, newWeights, force_questions)
 
     // Return refreshed full metrics
     const reviews = await fetchHotelReviews(eg_property_id)
