@@ -176,7 +176,7 @@ function ChartCard({ title, subtitle, data, color }: {
          style={{ border: '1px solid rgba(194,198,214,0.3)' }}>
       <h2 className="text-sm font-bold plusJakartaSans mb-1" style={{ color: '#141936' }}>{title}</h2>
       <p className="text-xs mb-4" style={{ color: '#727785' }}>{subtitle}</p>
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={Math.max(240, data.length * 32)}>
         <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
           <XAxis
             type="number"
