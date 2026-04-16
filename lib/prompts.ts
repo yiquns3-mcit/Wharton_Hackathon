@@ -103,6 +103,28 @@ Output JSON only.`,
   }
 }
 
+// ─── Scene 3 (facts only): re-analyze fact tag coverage without touching text_analysis ──
+// Used when fact tags are regenerated and only fact_analysis needs to be rebuilt.
+export function buildFactsOnlyPrompt(
+  reviewText: string,
+  factTags: Array<{ tag_id: string; fact_claim: string }>
+) {
+  return {
+    system:
+      'You are a hotel review analysis assistant. Return only valid JSON with no markdown fences or extra text.',
+    user: `The following are specific verifiable facts from a hotel's description:
+${factTags.map((f) => `- [${f.tag_id}]: "${f.fact_claim}"`).join('\n')}
+
+Review text:
+"${reviewText}"
+
+For each fact tag, output 1 if the review mentions or references anything related to that specific fact, or 0 if it does not.
+
+Return format: {"tag_id": 0 or 1, ...}
+Output JSON only.`,
+  }
+}
+
 // ─── Dynamic follow-up: detect covered gaps, return uncovered ones ──────────
 // currentText: the user's in-progress review text
 // topGapFacts: top N gap facts for this hotel (with pre-generated questions)

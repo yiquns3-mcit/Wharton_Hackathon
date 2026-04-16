@@ -24,6 +24,7 @@ export type RatingFeature = (typeof RATING_FEATURES)[number]
 export interface ReviewRow {
   acquisition_date: string | null
   rating: Record<string, number>
+  review_text?: string | null
   text_analysis: Record<string, number>
   fact_analysis?: Record<string, number>
 }

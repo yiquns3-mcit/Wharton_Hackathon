@@ -357,6 +357,7 @@ export default function DashboardPage() {
   const [batchRunning, setBatchRunning] = useState(false)
   const [batchProgress, setBatchProgress] = useState<{ processed: number; total: number; failed: number } | null>(null)
   const [forceReanalyze, setForceReanalyze] = useState(false)
+  const [analysisMode, setAnalysisMode] = useState<'both' | 'facts_only'>('both')
   const abortRef = useRef<AbortController | null>(null)
 
   const [factGenRunning, setFactGenRunning] = useState(false)
@@ -424,7 +425,7 @@ export default function DashboardPage() {
     const res = await fetch('/api/batch-analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eg_property_id: selectedId, force: forceReanalyze }),
+      body: JSON.stringify({ eg_property_id: selectedId, force: forceReanalyze, mode: analysisMode }),
       signal: ctrl.signal,
     })
 
@@ -723,11 +724,39 @@ export default function DashboardPage() {
               {/* Batch analysis */}
               <Section title="Batch Historical Analysis" icon="batch_prediction">
                 <p className="text-sm mb-5" style={{ color: '#424654' }}>
-                  Run AI analysis (Scene 3) on reviews for this property. This updates both{' '}
-                  <strong>text coverage</strong> (which rating features are mentioned) and{' '}
-                  <strong>fact tag coverage</strong> (which hotel facts reviewers confirm).
-                  Check &ldquo;Re-analyze all&rdquo; to overwrite existing results.
+                  Run AI analysis (Scene 3) on reviews for this property.
+                  Choose a mode below, then click Run.
                 </p>
+
+                {/* Mode selector */}
+                <div className="flex gap-3 mb-5 flex-wrap">
+                  {([
+                    { value: 'both', label: 'Both', desc: 'Rating features + fact tags (first-time setup)' },
+                    { value: 'facts_only', label: 'Facts only', desc: 'Re-tag after updating fact tags — skips rating analysis' },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setAnalysisMode(opt.value)}
+                      disabled={batchRunning}
+                      className="flex-1 min-w-48 text-left px-4 py-3 rounded-xl transition-all disabled:opacity-50"
+                      style={{
+                        border: analysisMode === opt.value ? '2px solid #0050b8' : '1.5px solid #c2c6d6',
+                        backgroundColor: analysisMode === opt.value ? '#f4f2ff' : '#fff',
+                      }}
+                    >
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <div className="w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0"
+                             style={{ borderColor: analysisMode === opt.value ? '#0050b8' : '#c2c6d6' }}>
+                          {analysisMode === opt.value && (
+                            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#0050b8' }} />
+                          )}
+                        </div>
+                        <span className="text-sm font-semibold" style={{ color: '#141936' }}>{opt.label}</span>
+                      </div>
+                      <p className="text-xs ml-5.5" style={{ color: '#727785' }}>{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
 
                 {batchProgress && (
                   <div className="mb-5 p-4 rounded-xl" style={{ backgroundColor: '#f4f2ff' }}>

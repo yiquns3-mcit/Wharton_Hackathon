@@ -30,7 +30,7 @@ export async function fetchHotelDescription(propertyId: string) {
 export async function fetchHotelReviews(propertyId: string): Promise<ReviewRow[]> {
   const { data, error } = await supabase
     .from('reviews_proc')
-    .select('acquisition_date, rating, text_analysis, fact_analysis')
+    .select('acquisition_date, rating, review_text, text_analysis, fact_analysis')
     .eq('eg_property_id', propertyId)
   if (error) throw new Error(`fetchHotelReviews: ${error.message}`)
   return (data ?? []) as ReviewRow[]

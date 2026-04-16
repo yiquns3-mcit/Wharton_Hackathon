@@ -30,15 +30,17 @@ export async function GET(
   // Calculate all three dimensions + priority scores
   const { priority_scores, top_features, dimensions } = calculatePriorityScores(reviews, weights)
 
-  // Count reviews with text_analysis populated (non-empty)
-  const withTextAnalysis = reviews.filter(
+  // Count reviews with text_analysis populated (non-empty).
+  // Exclude reviews with no review_text — they can never be analyzed.
+  const analyzable = reviews.filter((r) => r.review_text && r.review_text.trim().length > 0)
+  const withTextAnalysis = analyzable.filter(
     (r) => r.text_analysis && Object.keys(r.text_analysis).length > 0
   ).length
 
   return NextResponse.json({
     eg_property_id,
     total_reviews: total,
-    text_analysis_coverage: total > 0 ? withTextAnalysis / total : 0,
+    text_analysis_coverage: analyzable.length > 0 ? withTextAnalysis / analyzable.length : 0,
     last_updated: ha?.last_updated ?? null,
     weights,
     priority_scores,
@@ -82,7 +84,8 @@ export async function POST(
     const reviews = await fetchHotelReviews(eg_property_id)
     const { dimensions } = calculatePriorityScores(reviews, newWeights)
 
-    const withTextAnalysis = reviews.filter(
+    const analyzable = reviews.filter((r) => r.review_text && r.review_text.trim().length > 0)
+    const withTextAnalysis = analyzable.filter(
       (r) => r.text_analysis && Object.keys(r.text_analysis).length > 0
     ).length
 
@@ -93,7 +96,7 @@ export async function POST(
       top_features: result.top_features,
       dimensions,
       total_reviews: reviews.length,
-      text_analysis_coverage: reviews.length > 0 ? withTextAnalysis / reviews.length : 0,
+      text_analysis_coverage: analyzable.length > 0 ? withTextAnalysis / analyzable.length : 0,
       weights: newWeights,
     })
   } catch (err) {

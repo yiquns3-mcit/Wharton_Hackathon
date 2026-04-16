@@ -5,12 +5,13 @@
 import { supabase } from '@/lib/supabase'
 import { openai } from '@/lib/openai'
 import { RATING_FEATURES, type FactTag } from '@/lib/scoring'
-import { buildAnalysisPrompt, stripMarkdownFences } from '@/lib/prompts'
+import { buildAnalysisPrompt, buildFactsOnlyPrompt, stripMarkdownFences } from '@/lib/prompts'
 import { updateHotelAnalysis } from '@/lib/hotelAnalysisUpdater'
 import { NextRequest } from 'next/server'
 
 export async function POST(req: NextRequest) {
-  const { eg_property_id, force = false } = await req.json()
+  const { eg_property_id, force = false, mode = 'both' } = await req.json()
+  const factsOnly = mode === 'facts_only'
 
   if (!eg_property_id) {
     return new Response(JSON.stringify({ error: 'eg_property_id is required' }), { status: 400 })
@@ -32,16 +33,22 @@ export async function POST(req: NextRequest) {
   // Fetch all reviews for this hotel
   const { data: reviews, error } = await supabase
     .from('reviews_proc')
-    .select('review_id, review_text, text_analysis')
+    .select('review_id, review_text, text_analysis, fact_analysis')
     .eq('eg_property_id', eg_property_id)
 
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), { status: 500 })
   }
 
-  // When force=true, re-process all reviews; otherwise only those with empty text_analysis
+  // Determine pending reviews based on mode:
+  // - both: reviews missing text_analysis (or all if force)
+  // - facts_only: reviews missing fact_analysis (or all if force)
   const pending = (reviews ?? []).filter((r) => {
     if (force) return true
+    if (factsOnly) {
+      const fa = r.fact_analysis
+      return !fa || Object.keys(fa).length === 0
+    }
     const ta = r.text_analysis
     return !ta || Object.keys(ta).length === 0
   })
@@ -75,17 +82,23 @@ export async function POST(req: NextRequest) {
         }
 
         try {
-          const { system, user } = buildAnalysisPrompt(
-            review.review_text,
-            [...RATING_FEATURES],
-            factTags.length > 0 ? factTags : undefined
-          )
+          // Choose prompt based on mode
+          let promptArgs: { system: string; user: string }
+          if (factsOnly && factTags.length > 0) {
+            promptArgs = buildFactsOnlyPrompt(review.review_text, factTags)
+          } else {
+            promptArgs = buildAnalysisPrompt(
+              review.review_text,
+              [...RATING_FEATURES],
+              factTags.length > 0 ? factTags : undefined
+            )
+          }
 
           const completion = await openai.chat.completions.create({
             model: 'gpt-4o',
             messages: [
-              { role: 'system', content: system },
-              { role: 'user', content: user },
+              { role: 'system', content: promptArgs.system },
+              { role: 'user', content: promptArgs.user },
             ],
           })
 
@@ -95,7 +108,10 @@ export async function POST(req: NextRequest) {
 
           try {
             const parsed = JSON.parse(stripMarkdownFences(raw))
-            if (parsed.text_analysis) {
+            if (factsOnly) {
+              // facts_only response is a flat {tag_id: 0|1} object
+              fact_analysis = parsed
+            } else if (parsed.text_analysis) {
               text_analysis = parsed.text_analysis
               fact_analysis = parsed.fact_analysis ?? {}
             } else {
@@ -109,8 +125,11 @@ export async function POST(req: NextRequest) {
             continue
           }
 
-          // Write immediately to DB
-          const updatePayload: Record<string, unknown> = { text_analysis }
+          // Write immediately to DB — only update the fields relevant to this mode
+          const updatePayload: Record<string, unknown> = {}
+          if (!factsOnly) {
+            updatePayload.text_analysis = text_analysis
+          }
           if (factTags.length > 0) {
             updatePayload.fact_analysis = fact_analysis
           }
