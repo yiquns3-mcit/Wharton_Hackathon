@@ -2,7 +2,7 @@
 // POST /api/bi/[id] — recalculate with new weights
 
 import { supabase } from '@/lib/supabase'
-import { calculatePriorityScores, DEFAULT_WEIGHTS, type WeightConfig } from '@/lib/scoring'
+import { calculatePriorityScores, calculateGapScores, DEFAULT_WEIGHTS, type WeightConfig, type FactTag } from '@/lib/scoring'
 import { updateHotelAnalysis, fetchHotelReviews } from '@/lib/hotelAnalysisUpdater'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -37,6 +37,9 @@ export async function GET(
     (r) => r.text_analysis && Object.keys(r.text_analysis).length > 0
   ).length
 
+  const rawFactInventory = (ha?.fact_inventory ?? []) as FactTag[]
+  const freshFactInventory = calculateGapScores(rawFactInventory, reviews)
+
   return NextResponse.json({
     eg_property_id,
     total_reviews: total,
@@ -46,7 +49,7 @@ export async function GET(
     priority_scores,
     top_features,
     dimensions,
-    fact_inventory: ha?.fact_inventory ?? [],
+    fact_inventory: freshFactInventory,
     gap_questions: ha?.gap_questions ?? [],
   })
 }

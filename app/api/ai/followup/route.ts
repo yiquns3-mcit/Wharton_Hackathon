@@ -58,11 +58,8 @@ export async function POST(req: NextRequest) {
     questions = JSON.parse(stripMarkdownFences(raw))
   } catch (err) {
     console.error('[POST /api/ai/followup] Failed to parse response', err)
-    // Graceful degradation: return the top 2 pre-generated questions without filtering
-    questions = topGapFacts.slice(0, 2).map((f) => ({
-      tag_id: f.tag_id,
-      question: f.question,
-    }))
+    // Graceful degradation: return nothing rather than show already-covered questions
+    questions = []
   }
 
   return NextResponse.json({ questions })

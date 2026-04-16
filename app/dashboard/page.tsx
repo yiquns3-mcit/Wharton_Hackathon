@@ -77,7 +77,259 @@ const toChartData = (record: Record<string, number>) =>
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
-function NavBar() {
+function HelpModal({ onClose }: { onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  useEffect(() => {
+    const onMouse = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', onMouse)
+    return () => document.removeEventListener('mousedown', onMouse)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center"
+         style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
+      <div ref={ref}
+           className="bg-white rounded-2xl w-full max-h-[85vh] overflow-y-auto"
+           style={{
+             maxWidth: '680px',
+             margin: '0 16px',
+             boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
+             border: '1px solid rgba(194,198,214,0.4)',
+           }}>
+        {/* Header */}
+        <div className="sticky top-0 bg-white flex items-center justify-between px-8 pt-7 pb-5"
+             style={{ borderBottom: '1px solid rgba(194,198,214,0.3)' }}>
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-2xl" style={{ color: '#0050b8' }}>menu_book</span>
+            <div>
+              <h2 className="text-lg font-extrabold plusJakartaSans" style={{ color: '#141936' }}>
+                Dashboard Documentation
+              </h2>
+              <p className="text-xs" style={{ color: '#727785' }}>How this dashboard works and how to use it</p>
+            </div>
+          </div>
+          <button onClick={onClose}
+                  className="p-2 rounded-full transition-colors"
+                  style={{ color: '#727785' }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f4f2ff')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
+            <span className="material-symbols-outlined text-xl">close</span>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-8 py-7 space-y-8 text-sm" style={{ color: '#424654', lineHeight: '1.65' }}>
+
+          {/* Section 1 */}
+          <section>
+            <h3 className="text-base font-bold plusJakartaSans mb-2" style={{ color: '#141936' }}>
+              What is this dashboard?
+            </h3>
+            <p>
+              This is an admin-only analytics tool that measures <strong style={{ color: '#141936' }}>review data quality</strong> across
+              15 rating features and a set of AI-extracted fact tags for each hotel property.
+              The goal is to identify which features have the most missing, stale, or unconfirmed data —
+              so the review form on Page 1 can prioritise asking users the most valuable questions.
+            </p>
+            <p className="mt-2">
+              Users on Page 1 never see these metrics. They only see the guided questions that this system generates.
+            </p>
+          </section>
+
+          <div style={{ borderTop: '1px solid rgba(194,198,214,0.3)' }} />
+
+          {/* Section 2 */}
+          <section>
+            <h3 className="text-base font-bold plusJakartaSans mb-3" style={{ color: '#141936' }}>
+              The Priority Score Formula
+            </h3>
+            <p className="mb-3">
+              Each of the 15 rating features gets a composite priority score calculated from three dimensions:
+            </p>
+            <div className="rounded-xl p-4 font-mono text-xs leading-relaxed"
+                 style={{ backgroundColor: '#f8f8fc', border: '1px solid rgba(194,198,214,0.4)', color: '#141936' }}>
+              priority_score = w1 × missing_rate<br />
+              {'               '}+ w2 × (1 − time_confidence)<br />
+              {'               '}− w3 × text_coverage
+            </div>
+            <div className="mt-4 space-y-3">
+              {[
+                {
+                  label: 'Missing Rate (w1)',
+                  color: '#0050b8',
+                  desc: 'Fraction of reviews where the user left this feature unrated. A rating of 0 means the user skipped it — not that they gave it zero stars. Higher = more data missing = higher priority.',
+                },
+                {
+                  label: 'Time Confidence (w2)',
+                  color: '#585c7d',
+                  desc: 'Weighted average of non-zero ratings, where older reviews count less (>2 yrs = 0.2×, 1–2 yrs = 0.5×, <1 yr = 1×), normalised to 0–1. The term (1 − time_confidence) means low-confidence data drives higher priority.',
+                },
+                {
+                  label: 'Text Coverage (w3)',
+                  color: '#10b981',
+                  desc: 'Fraction of reviews whose text was detected (by AI) to mention this feature. Higher coverage means the feature is already well-discussed, so it reduces urgency.',
+                },
+              ].map(d => (
+                <div key={d.label} className="flex gap-3">
+                  <div className="w-2 rounded-full flex-shrink-0 mt-1.5 self-stretch"
+                       style={{ backgroundColor: d.color, minHeight: '8px' }} />
+                  <div>
+                    <span className="font-semibold" style={{ color: '#141936' }}>{d.label} — </span>
+                    {d.desc}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs" style={{ color: '#727785' }}>
+              w1 + w2 + w3 = 1. Default: w1 = 0.4, w2 = 0.3, w3 = 0.3. Adjust with the sliders and click "Apply Weights & Recalculate".
+            </p>
+          </section>
+
+          <div style={{ borderTop: '1px solid rgba(194,198,214,0.3)' }} />
+
+          {/* Section 3 */}
+          <section>
+            <h3 className="text-base font-bold plusJakartaSans mb-3" style={{ color: '#141936' }}>
+              Chart Guide
+            </h3>
+            <div className="space-y-3">
+              {[
+                {
+                  title: 'Missing Rate chart',
+                  color: '#0050b8',
+                  desc: 'Taller bar = more users skipped scoring this feature. A feature at 80% missing means 4 in 5 reviewers never rated it.',
+                },
+                {
+                  title: 'Time Confidence chart',
+                  color: '#585c7d',
+                  desc: 'Lower bar = the available ratings for this feature are old and less trustworthy. Ideal is close to 100% (fresh, reliable data).',
+                },
+                {
+                  title: 'Text Coverage chart',
+                  color: '#10b981',
+                  desc: 'Taller bar = more review texts naturally mention this topic. If coverage is high but missing rate is also high, users discuss it but don\'t rate it explicitly.',
+                },
+              ].map(c => (
+                <div key={c.title} className="flex items-start gap-3">
+                  <div className="w-3 h-3 rounded flex-shrink-0 mt-0.5"
+                       style={{ backgroundColor: c.color }} />
+                  <div>
+                    <span className="font-semibold" style={{ color: '#141936' }}>{c.title} — </span>
+                    {c.desc}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <div style={{ borderTop: '1px solid rgba(194,198,214,0.3)' }} />
+
+          {/* Section 4 */}
+          <section>
+            <h3 className="text-base font-bold plusJakartaSans mb-3" style={{ color: '#141936' }}>
+              Fact Gap System
+            </h3>
+            <p className="mb-3">
+              In addition to the 15 rating features, the system extracts <strong style={{ color: '#141936' }}>fact tags</strong> —
+              verifiable claims from the hotel description (e.g. "Heated outdoor pool", "Free airport shuttle").
+              Each tag is tagged as high or medium volatility depending on how likely it is to change.
+            </p>
+            <p className="mb-3">
+              The <strong style={{ color: '#141936' }}>gap score</strong> for each fact tag is:
+            </p>
+            <div className="rounded-xl p-4 font-mono text-xs"
+                 style={{ backgroundColor: '#f8f8fc', border: '1px solid rgba(194,198,214,0.4)', color: '#141936' }}>
+              gap_score = 0.5 × (1 − coverage_rate) + 0.5 × staleness
+            </div>
+            <p className="mt-3">
+              Higher gap score = fewer recent reviews confirmed this fact, meaning users should be asked about it.
+              These fact tags feed directly into the guided questions shown on the review form.
+            </p>
+          </section>
+
+          <div style={{ borderTop: '1px solid rgba(194,198,214,0.3)' }} />
+
+          {/* Section 5 */}
+          <section>
+            <h3 className="text-base font-bold plusJakartaSans mb-4" style={{ color: '#141936' }}>
+              How to Operate — Step by Step
+            </h3>
+            <div className="space-y-4">
+              {[
+                {
+                  step: '1',
+                  title: 'Select a hotel',
+                  desc: 'Use the property dropdown at the top of the page. All metrics below are scoped to the selected hotel.',
+                },
+                {
+                  step: '2',
+                  title: 'Generate Fact Tags (first time only)',
+                  desc: 'Click "Generate Fact Tags". The AI reads the hotel description and extracts verifiable factual claims. This only needs to run once unless the description changes.',
+                },
+                {
+                  step: '3',
+                  title: 'Run Batch Analysis',
+                  desc: 'Check "Re-analyze all reviews" to process historical data, then click "Run Batch Analysis". The AI processes each review one by one — this updates text_analysis in the database and refreshes all three chart dimensions. Wait for the progress bar to complete.',
+                },
+                {
+                  step: '4',
+                  title: 'Adjust weights (optional)',
+                  desc: 'Drag the w1 / w2 sliders to change how much each dimension contributes to priority. w3 is auto-calculated. Click "Apply Weights & Recalculate" to save.',
+                },
+                {
+                  step: '5',
+                  title: 'Regenerate Gap Questions (if needed)',
+                  desc: 'If the priority ranking changed or fact tags were updated, click "Regenerate Gap Questions". This updates the questions shown to users on the review form.',
+                },
+                {
+                  step: '6',
+                  title: 'Repeat for each hotel',
+                  desc: 'Each property has its own independent dataset. Return to step 1 and repeat for every hotel you want to activate.',
+                },
+              ].map(s => (
+                <div key={s.step} className="flex gap-4">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5"
+                       style={{ backgroundColor: '#0050b8', color: '#fff' }}>
+                    {s.step}
+                  </div>
+                  <div>
+                    <p className="font-semibold mb-0.5" style={{ color: '#141936' }}>{s.title}</p>
+                    <p>{s.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Footer note */}
+          <div className="rounded-xl p-4 flex gap-3"
+               style={{ backgroundColor: '#f4f2ff', border: '1px solid rgba(0,80,184,0.15)' }}>
+            <span className="material-symbols-outlined text-base flex-shrink-0 mt-0.5" style={{ color: '#0050b8' }}>
+              info
+            </span>
+            <p className="text-xs" style={{ color: '#585c7d' }}>
+              Batch analysis uses GPT-4o and processes reviews sequentially to avoid rate limits.
+              OpenAI API costs are incurred during Step 3 and when regenerating questions.
+              The review form on Page 1 reads cached results — no AI calls happen at user load time.
+            </p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function NavBar({ onHelpClick }: { onHelpClick: () => void }) {
   return (
     <nav className="bg-white sticky top-0 z-50"
          style={{ borderBottom: '1px solid rgba(194,198,214,0.3)' }}>
@@ -93,6 +345,17 @@ function NavBar() {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={onHelpClick}
+            title="Documentation"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+            style={{ backgroundColor: '#f4f2ff', color: '#0050b8', border: '1px solid rgba(0,80,184,0.18)' }}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#ece9ff'; e.currentTarget.style.borderColor = '#0050b8' }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#f4f2ff'; e.currentTarget.style.borderColor = 'rgba(0,80,184,0.18)' }}
+          >
+            <span className="material-symbols-outlined text-base">menu_book</span>
+            How it works
+          </button>
           <span className="material-symbols-outlined text-sm"
                 style={{ color: '#727785' }}>
             lock
@@ -476,6 +739,7 @@ export default function DashboardPage() {
   const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null)
   const [bi, setBi] = useState<BiData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   const [w1, setW1] = useState(0.4)
   const [w2, setW2] = useState(0.3)
@@ -641,7 +905,7 @@ export default function DashboardPage() {
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex flex-col inter" style={{ backgroundColor: '#fbf8ff', color: '#141936' }}>
-      <NavBar />
+      <NavBar onHelpClick={() => setHelpOpen(true)} />
 
       <main className="flex-1">
         {/* ── Page header + hotel selector ── */}
@@ -1084,6 +1348,8 @@ export default function DashboardPage() {
       </main>
 
       <Footer />
+
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
     </div>
   )
 }

@@ -32,8 +32,8 @@ export async function GET(
   // { id: string, question: string } — id is tag_id (new) or feature (legacy)
   const questions =
     gapQuestions.length > 0
-      ? gapQuestions.map((q) => ({ id: q.tag_id, question: q.question, gap_score: q.gap_score }))
-      : legacyQuestions.map((q) => ({ id: q.feature, question: q.question, gap_score: 0 }))
+      ? gapQuestions.map((q) => ({ id: q.tag_id, question: q.question, gap_score: q.gap_score, fact_claim: q.fact_claim }))
+      : legacyQuestions.map((q) => ({ id: q.feature, question: q.question, gap_score: 0, fact_claim: '' }))
 
   return NextResponse.json({
     questions,

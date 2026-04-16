@@ -13,6 +13,7 @@ interface Hotel {
   country: string
   star_rating: number
   guestrating_avg_expedia: number
+  review_count: number
 }
 
 // Unified question shape returned by /api/hotels/[id]/questions
@@ -20,7 +21,9 @@ interface GapQuestion {
   id: string       // tag_id (new) or feature name (legacy fallback)
   question: string
   gap_score: number
+  fact_claim?: string
 }
+
 
 type AiPanelState = 'hidden' | 'loading' | 'result'
 
@@ -192,26 +195,44 @@ function HotelSelect({ hotels, value, onChange }: {
             ) : (
               filtered.map(h => {
                 const isSelected = h.eg_property_id === value
+                const isDisabled = h.review_count > 200
                 return (
                   <button
                     key={h.eg_property_id}
                     type="button"
-                    onClick={() => { onChange(h.eg_property_id); setOpen(false); setSearch('') }}
+                    disabled={isDisabled}
+                    onClick={() => { if (!isDisabled) { onChange(h.eg_property_id); setOpen(false); setSearch('') } }}
                     className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm transition-colors"
-                    style={{ backgroundColor: isSelected ? 'rgba(0,80,184,0.06)' : 'transparent' }}
-                    onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = '#f4f2ff' }}
-                    onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+                    style={{
+                      backgroundColor: isSelected ? 'rgba(0,80,184,0.06)' : 'transparent',
+                      cursor: isDisabled ? 'not-allowed' : 'pointer',
+                      opacity: isDisabled ? 0.5 : 1,
+                    }}
+                    onMouseEnter={e => { if (!isSelected && !isDisabled) (e.currentTarget as HTMLElement).style.backgroundColor = '#f4f2ff' }}
+                    onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = isSelected ? 'rgba(0,80,184,0.06)' : 'transparent' }}
                   >
                     <span className="material-symbols-outlined text-base flex-shrink-0"
                           style={{ color: isSelected ? '#0050b8' : '#c2c6d6' }}>
                       {isSelected ? 'check_circle' : 'apartment'}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium truncate" style={{ color: '#141936' }}>
-                        {h.property_name ?? h.eg_property_id}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium truncate" style={{ color: '#141936' }}>
+                          {h.property_name ?? h.eg_property_id}
+                        </p>
+                        {isDisabled && (
+                          <span className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0"
+                                style={{ backgroundColor: '#f4f2ff', color: '#727785' }}>
+                            Coming soon
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs truncate" style={{ color: '#727785' }}>
-                        {[h.city, h.star_rating ? `${'★'.repeat(Math.round(h.star_rating))} ${h.star_rating}` : ''].filter(Boolean).join(' · ')}
+                        {[
+                          h.city,
+                          h.star_rating ? `${'★'.repeat(Math.round(h.star_rating))} ${h.star_rating}` : '',
+                          isDisabled ? `${h.review_count.toLocaleString()} reviews` : '',
+                        ].filter(Boolean).join(' · ')}
                       </p>
                     </div>
                   </button>
@@ -468,6 +489,7 @@ export default function ReviewPage() {
   const [gapQuestions, setGapQuestions]             = useState<GapQuestion[]>([])
   const [displayedQuestions, setDisplayedQuestions] = useState<GapQuestion[]>([])
   const [followUpLoading, setFollowUpLoading]       = useState(false)
+  const [allCovered, setAllCovered]                 = useState(false)
   const followUpAbortRef                            = useRef<AbortController | null>(null)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -488,6 +510,7 @@ export default function ReviewPage() {
     setSelectedHotel(hotels.find(h => h.eg_property_id === id) ?? null)
     setGapQuestions([])
     setDisplayedQuestions([])
+    setAllCovered(false)
     setFollowUpAnswers({})
     setRatings({})
     setAiPanelState('hidden')
@@ -524,13 +547,21 @@ export default function ReviewPage() {
         })
         const data = await res.json()
         const updated: Array<{ tag_id: string; question: string }> = data.questions ?? []
-        if (updated.length > 0) {
+        if (updated.length === 0) {
+          setAllCovered(true)
+          setDisplayedQuestions([])
+        } else {
+          setAllCovered(false)
           setDisplayedQuestions(
-            updated.map((q) => ({
-              id: q.tag_id,
-              question: q.question,
-              gap_score: gapQuestions.find((g) => g.id === q.tag_id)?.gap_score ?? 0,
-            }))
+            updated.map((q) => {
+              const original = gapQuestions.find((g) => g.id === q.tag_id)
+              return {
+                id: q.tag_id,
+                question: q.question,
+                gap_score: original?.gap_score ?? 0,
+                fact_claim: original?.fact_claim,
+              }
+            })
           )
         }
       } catch (err: unknown) {
@@ -548,6 +579,9 @@ export default function ReviewPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewText, selectedId])
+
+  // visibleQuestions is a direct alias — AI result controls display entirely
+  const visibleQuestions = displayedQuestions
 
   // ── Star rating ────────────────────────────────────────────────────────────
   const setRating = (feature: string, value: number) => {
@@ -700,7 +734,7 @@ export default function ReviewPage() {
 
   const resetForm = () => {
     setSubmitted(false); setSelectedId(''); setSelectedHotel(null)
-    setGapQuestions([]); setDisplayedQuestions([])
+    setGapQuestions([]); setDisplayedQuestions([]); setAllCovered(false)
     setRatings({}); setReviewText(''); setReviewTitle('')
     setImages([]); setTermsAccepted(false); setAiPanelState('hidden'); setPolishedText('')
     setTopFeatures([]); setShowOptionalRatings(false); setFollowUpAnswers({})
@@ -1096,43 +1130,64 @@ export default function ReviewPage() {
                       </div>
 
                       {/* ── 4. Follow-up Questions (Fact Gap Verification) ── */}
-                      {displayedQuestions.length > 0 && (
+                      {(visibleQuestions.length > 0 || followUpLoading || allCovered) && (
                         <div className="space-y-6">
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-base font-bold plusJakartaSans" style={{ color: '#141936' }}>
-                              Help us verify a few facts
-                            </h3>
-                            {followUpLoading && (
-                              <span className="text-xs px-2 py-0.5 rounded-full animate-pulse"
-                                    style={{ backgroundColor: 'rgba(0,80,184,0.08)', color: '#0050b8' }}>
-                                Updating…
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs" style={{ color: '#424654' }}>
-                            These questions are based on facts that haven&apos;t been recently verified by guests.
-                          </p>
-                          {displayedQuestions.slice(0, 2).map(q => (
-                            <div key={q.id} className="space-y-2 transition-all duration-300">
-                              <label className="text-sm font-semibold block" style={{ color: '#424654' }}>
-                                {q.question}
-                              </label>
-                              <textarea
-                                rows={3}
-                                placeholder="Share your thoughts…"
-                                className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none transition-all"
-                                style={{
-                                  backgroundColor: '#f4f2ff',
-                                  border: 'none',
-                                  color: '#141936',
-                                }}
-                                onFocus={e => { e.currentTarget.style.boxShadow = '0 0 0 2px #0050b8'; e.currentTarget.style.backgroundColor = '#fff' }}
-                                onBlur={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.backgroundColor = '#f4f2ff' }}
-                                value={followUpAnswers[q.id] ?? ''}
-                                onChange={e => setFollowUpAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                              />
+                          <h3 className="text-base font-bold plusJakartaSans" style={{ color: '#141936' }}>
+                            Help us verify a few facts
+                          </h3>
+
+                          {/* Loading state */}
+                          {followUpLoading && (
+                            <div className="flex items-center gap-3 py-3">
+                              <div className="flex gap-1">
+                                <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#0050b8', animationDelay: '0ms' }} />
+                                <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#0050b8', animationDelay: '150ms' }} />
+                                <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#0050b8', animationDelay: '300ms' }} />
+                              </div>
+                              <span className="text-sm" style={{ color: '#424654' }}>Checking your review…</span>
                             </div>
-                          ))}
+                          )}
+
+                          {/* Comprehensive state */}
+                          {!followUpLoading && allCovered && visibleQuestions.length === 0 && (
+                            <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: 'rgba(0,160,80,0.08)' }}>
+                              <span className="text-lg">✓</span>
+                              <div>
+                                <p className="text-sm font-semibold" style={{ color: '#007a3d' }}>Your review looks great!</p>
+                                <p className="text-xs mt-0.5" style={{ color: '#424654' }}>You&apos;ve already covered all the key facts we wanted to verify. Thank you!</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Questions */}
+                          {!followUpLoading && visibleQuestions.length > 0 && (
+                            <>
+                              <p className="text-xs" style={{ color: '#424654' }}>
+                                These questions are based on facts that haven&apos;t been recently verified by guests.
+                              </p>
+                              {visibleQuestions.map(q => (
+                                <div key={q.id} className="space-y-2 transition-all duration-300">
+                                  <label className="text-sm font-semibold block" style={{ color: '#424654' }}>
+                                    {q.question}
+                                  </label>
+                                  <textarea
+                                    rows={3}
+                                    placeholder="Share your thoughts…"
+                                    className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none transition-all"
+                                    style={{
+                                      backgroundColor: '#f4f2ff',
+                                      border: 'none',
+                                      color: '#141936',
+                                    }}
+                                    onFocus={e => { e.currentTarget.style.boxShadow = '0 0 0 2px #0050b8'; e.currentTarget.style.backgroundColor = '#fff' }}
+                                    onBlur={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.backgroundColor = '#f4f2ff' }}
+                                    value={followUpAnswers[q.id] ?? ''}
+                                    onChange={e => setFollowUpAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                                  />
+                                </div>
+                              ))}
+                            </>
+                          )}
                         </div>
                       )}
 
