@@ -86,7 +86,7 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
-      orderChanged: result.orderChanged,
+      orderChanged: result.legacyOrderChanged,
       priority_scores: result.priority_scores,
       top_features: result.top_features,
       dimensions,

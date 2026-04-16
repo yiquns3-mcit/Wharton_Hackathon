@@ -15,9 +15,11 @@ interface Hotel {
   guestrating_avg_expedia: number
 }
 
-interface AiQuestion {
-  feature: string
+// Unified question shape returned by /api/hotels/[id]/questions
+interface GapQuestion {
+  id: string       // tag_id (new) or feature name (legacy fallback)
   question: string
+  gap_score: number
 }
 
 type AiPanelState = 'hidden' | 'loading' | 'result'
@@ -309,7 +311,7 @@ export default function ReviewPage() {
   const [hotels, setHotels]                 = useState<Hotel[]>([])
   const [selectedId, setSelectedId]         = useState('')
   const [selectedHotel, setSelectedHotel]   = useState<Hotel | null>(null)
-  const [questions, setQuestions]           = useState<AiQuestion[]>([])
+  // (legacy questions state removed — now using gapQuestions + displayedQuestions)
   const [ratings, setRatings]               = useState<Record<string, number>>({})
   const [reviewText, setReviewText]         = useState('')
   const [reviewTitle, setReviewTitle]       = useState('')
@@ -330,6 +332,12 @@ export default function ReviewPage() {
   const [showOptionalRatings, setShowOptionalRatings] = useState(false)
   const [followUpAnswers, setFollowUpAnswers]         = useState<Record<string, string>>({})
 
+  // Gap questions: preloaded on hotel select; dynamically updated as user types
+  const [gapQuestions, setGapQuestions]             = useState<GapQuestion[]>([])
+  const [displayedQuestions, setDisplayedQuestions] = useState<GapQuestion[]>([])
+  const [followUpLoading, setFollowUpLoading]       = useState(false)
+  const followUpAbortRef                            = useRef<AbortController | null>(null)
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null)
   const textareaRef    = useRef<HTMLTextAreaElement>(null)
@@ -346,7 +354,9 @@ export default function ReviewPage() {
   const handleHotelChange = useCallback(async (id: string) => {
     setSelectedId(id)
     setSelectedHotel(hotels.find(h => h.eg_property_id === id) ?? null)
-    setQuestions([])
+    setGapQuestions([])
+    setDisplayedQuestions([])
+    setFollowUpAnswers({})
     setRatings({})
     setAiPanelState('hidden')
     setPolishedText('')
@@ -355,10 +365,57 @@ export default function ReviewPage() {
     setLoadingQuestions(true)
     const res = await fetch(`/api/hotels/${id}/questions`)
     const data = await res.json()
-    setQuestions(data.ai_questions ?? [])
+    const loaded: GapQuestion[] = data.questions ?? []
+    setGapQuestions(loaded)
+    setDisplayedQuestions(loaded.slice(0, 2))
     setTopFeatures(data.top_features ?? [])
     setLoadingQuestions(false)
   }, [hotels])
+
+  // ── Dynamic follow-up questions (debounced, triggered while user types) ──────
+  useEffect(() => {
+    if (!selectedId || gapQuestions.length === 0 || reviewText.length < 30) return
+
+    // Cancel any in-flight request
+    if (followUpAbortRef.current) followUpAbortRef.current.abort()
+    const controller = new AbortController()
+    followUpAbortRef.current = controller
+
+    const timer = setTimeout(async () => {
+      setFollowUpLoading(true)
+      try {
+        const res = await fetch('/api/ai/followup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eg_property_id: selectedId, current_text: reviewText }),
+          signal: controller.signal,
+        })
+        const data = await res.json()
+        const updated: Array<{ tag_id: string; question: string }> = data.questions ?? []
+        if (updated.length > 0) {
+          setDisplayedQuestions(
+            updated.map((q) => ({
+              id: q.tag_id,
+              question: q.question,
+              gap_score: gapQuestions.find((g) => g.id === q.tag_id)?.gap_score ?? 0,
+            }))
+          )
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== 'AbortError') {
+          console.error('[dynamic followup]', err)
+        }
+      } finally {
+        setFollowUpLoading(false)
+      }
+    }, 1500)
+
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewText, selectedId])
 
   // ── Star rating ────────────────────────────────────────────────────────────
   const setRating = (feature: string, value: number) => {
@@ -480,8 +537,8 @@ export default function ReviewPage() {
     let finalText = reviewText
     const appendedAnswers = Object.entries(followUpAnswers)
       .filter(([, v]) => v.trim())
-      .map(([feature, answer]) => {
-        const q = questions.find(q => q.feature === feature)
+      .map(([id, answer]) => {
+        const q = displayedQuestions.find(q => q.id === id) ?? gapQuestions.find(q => q.id === id)
         return q ? `${q.question}\n${answer}` : answer
       })
     if (appendedAnswers.length > 0) {
@@ -511,7 +568,8 @@ export default function ReviewPage() {
 
   const resetForm = () => {
     setSubmitted(false); setSelectedId(''); setSelectedHotel(null)
-    setQuestions([]); setRatings({}); setReviewText(''); setReviewTitle('')
+    setGapQuestions([]); setDisplayedQuestions([])
+    setRatings({}); setReviewText(''); setReviewTitle('')
     setImages([]); setTermsAccepted(false); setAiPanelState('hidden'); setPolishedText('')
     setTopFeatures([]); setShowOptionalRatings(false); setFollowUpAnswers({})
   }
@@ -919,14 +977,25 @@ export default function ReviewPage() {
                         </div>
                       </div>
 
-                      {/* ── 4. Follow-up Questions ── */}
-                      {questions.length >= 2 && (
+                      {/* ── 4. Follow-up Questions (Fact Gap Verification) ── */}
+                      {displayedQuestions.length > 0 && (
                         <div className="space-y-6">
-                          <h3 className="text-base font-bold plusJakartaSans" style={{ color: '#141936' }}>
-                            A few more questions
-                          </h3>
-                          {[questions[0], questions[1]].map(q => (
-                            <div key={q.feature} className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-base font-bold plusJakartaSans" style={{ color: '#141936' }}>
+                              Help us verify a few facts
+                            </h3>
+                            {followUpLoading && (
+                              <span className="text-xs px-2 py-0.5 rounded-full animate-pulse"
+                                    style={{ backgroundColor: 'rgba(0,80,184,0.08)', color: '#0050b8' }}>
+                                Updating…
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs" style={{ color: '#424654' }}>
+                            These questions are based on facts that haven&apos;t been recently verified by guests.
+                          </p>
+                          {displayedQuestions.slice(0, 2).map(q => (
+                            <div key={q.id} className="space-y-2 transition-all duration-300">
                               <label className="text-sm font-semibold block" style={{ color: '#424654' }}>
                                 {q.question}
                               </label>
@@ -941,8 +1010,8 @@ export default function ReviewPage() {
                                 }}
                                 onFocus={e => { e.currentTarget.style.boxShadow = '0 0 0 2px #0050b8'; e.currentTarget.style.backgroundColor = '#fff' }}
                                 onBlur={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.backgroundColor = '#f4f2ff' }}
-                                value={followUpAnswers[q.feature] ?? ''}
-                                onChange={e => setFollowUpAnswers(prev => ({ ...prev, [q.feature]: e.target.value }))}
+                                value={followUpAnswers[q.id] ?? ''}
+                                onChange={e => setFollowUpAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
                               />
                             </div>
                           ))}

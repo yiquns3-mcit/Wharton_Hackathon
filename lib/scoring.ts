@@ -1,5 +1,5 @@
 // lib/scoring.ts
-// Pure function — no side effects, no API calls.
+// Pure functions — no side effects, no API calls.
 
 export const RATING_FEATURES = [
   'checkin',
@@ -25,6 +25,19 @@ export interface ReviewRow {
   acquisition_date: string | null
   rating: Record<string, number>
   text_analysis: Record<string, number>
+  fact_analysis?: Record<string, number>
+}
+
+// ─── Fact Tag types ────────────────────────────────────────────────────────
+export interface FactTag {
+  tag_id: string
+  source_field: string
+  fact_claim: string
+  volatility: 'high' | 'medium'
+  last_verified_at: string | null  // ISO date string of most recent review that mentioned this fact
+  coverage_count_last_year: number // how many reviews in the past year mentioned this fact
+  total_reviews_last_year: number  // total reviews in the past year (for this hotel)
+  gap_score: number                // computed: 0–1, higher = more urgent to ask about
 }
 
 export interface WeightConfig {
@@ -129,4 +142,71 @@ export function calculatePriorityScores(
     top_features,
     dimensions: { missing_rate, time_confidence, text_coverage },
   }
+}
+
+// ─── Gap score calculation for Fact Tags ───────────────────────────────────
+// Pure function — no side effects.
+// Input: current fact_inventory (from hotel_analysis) + all reviews with fact_analysis.
+// Output: updated fact_inventory with recalculated coverage stats and gap_scores, sorted desc.
+
+const ONE_YEAR_MS = 365.25 * 24 * 60 * 60 * 1000
+
+function stalenessScore(lastVerifiedAt: string | null): number {
+  if (!lastVerifiedAt) return 1.0
+  const now = new Date()
+  const verified = new Date(lastVerifiedAt)
+  const diffMs = now.getTime() - verified.getTime()
+  const diffDays = diffMs / (1000 * 60 * 60 * 24)
+  if (diffDays < 90) return 0.0
+  if (diffDays < 180) return 0.3
+  if (diffDays < 365) return 0.6
+  return 1.0
+}
+
+export function calculateGapScores(
+  factInventory: FactTag[],
+  reviews: ReviewRow[]
+): FactTag[] {
+  if (factInventory.length === 0) return []
+
+  const now = new Date()
+  const oneYearAgo = new Date(now.getTime() - ONE_YEAR_MS)
+
+  // Reviews from the past year
+  const recentReviews = reviews.filter((r) => {
+    if (!r.acquisition_date) return false
+    return new Date(r.acquisition_date) >= oneYearAgo
+  })
+  const totalRecentReviews = recentReviews.length
+
+  return factInventory.map((tag) => {
+    // Count how many recent reviews mention this fact
+    const coverageCount = recentReviews.filter(
+      (r) => (r.fact_analysis?.[tag.tag_id] ?? 0) === 1
+    ).length
+
+    // Find the most recent review that mentioned this fact (across all reviews, not just recent)
+    let lastVerifiedAt: string | null = null
+    for (const r of reviews) {
+      if ((r.fact_analysis?.[tag.tag_id] ?? 0) === 1 && r.acquisition_date) {
+        if (!lastVerifiedAt || r.acquisition_date > lastVerifiedAt) {
+          lastVerifiedAt = r.acquisition_date
+        }
+      }
+    }
+
+    const coverageRate =
+      totalRecentReviews > 0 ? coverageCount / totalRecentReviews : 0
+
+    const gapScore =
+      0.5 * (1 - coverageRate) + 0.5 * stalenessScore(lastVerifiedAt)
+
+    return {
+      ...tag,
+      last_verified_at: lastVerifiedAt,
+      coverage_count_last_year: coverageCount,
+      total_reviews_last_year: totalRecentReviews,
+      gap_score: Math.round(gapScore * 10000) / 10000,
+    }
+  }).sort((a, b) => b.gap_score - a.gap_score)
 }

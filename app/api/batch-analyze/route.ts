@@ -4,7 +4,7 @@
 // Processes reviews sequentially (not in parallel) to avoid rate limits.
 import { supabase } from '@/lib/supabase'
 import { openai } from '@/lib/openai'
-import { RATING_FEATURES } from '@/lib/scoring'
+import { RATING_FEATURES, type FactTag } from '@/lib/scoring'
 import { buildAnalysisPrompt, stripMarkdownFences } from '@/lib/prompts'
 import { updateHotelAnalysis } from '@/lib/hotelAnalysisUpdater'
 import { NextRequest } from 'next/server'
@@ -15,6 +15,19 @@ export async function POST(req: NextRequest) {
   if (!eg_property_id) {
     return new Response(JSON.stringify({ error: 'eg_property_id is required' }), { status: 400 })
   }
+
+  // Fetch hotel's fact_inventory once (used in every review's Scene 3 prompt)
+  const { data: ha } = await supabase
+    .from('hotel_analysis')
+    .select('fact_inventory')
+    .eq('eg_property_id', eg_property_id)
+    .single()
+
+  const factTags: Array<{ tag_id: string; fact_claim: string }> =
+    ((ha?.fact_inventory as FactTag[]) ?? []).map((f) => ({
+      tag_id: f.tag_id,
+      fact_claim: f.fact_claim,
+    }))
 
   // Fetch all reviews for this hotel
   const { data: reviews, error } = await supabase
@@ -64,7 +77,8 @@ export async function POST(req: NextRequest) {
         try {
           const { system, user } = buildAnalysisPrompt(
             review.review_text,
-            [...RATING_FEATURES]
+            [...RATING_FEATURES],
+            factTags.length > 0 ? factTags : undefined
           )
 
           const completion = await openai.chat.completions.create({
@@ -77,8 +91,16 @@ export async function POST(req: NextRequest) {
 
           const raw = completion.choices[0].message.content ?? '{}'
           let text_analysis: Record<string, number> = {}
+          let fact_analysis: Record<string, number> = {}
+
           try {
-            text_analysis = JSON.parse(stripMarkdownFences(raw))
+            const parsed = JSON.parse(stripMarkdownFences(raw))
+            if (parsed.text_analysis) {
+              text_analysis = parsed.text_analysis
+              fact_analysis = parsed.fact_analysis ?? {}
+            } else {
+              text_analysis = parsed
+            }
           } catch {
             console.error('[batch-analyze] JSON parse failed for', review.review_id)
             failed++
@@ -88,9 +110,14 @@ export async function POST(req: NextRequest) {
           }
 
           // Write immediately to DB
+          const updatePayload: Record<string, unknown> = { text_analysis }
+          if (factTags.length > 0) {
+            updatePayload.fact_analysis = fact_analysis
+          }
+
           await supabase
             .from('reviews_proc')
-            .update({ text_analysis })
+            .update(updatePayload)
             .eq('review_id', review.review_id)
 
           processed++
@@ -103,7 +130,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // After all reviews processed, update hotel_analysis
+      // After all reviews processed, update hotel_analysis (includes gap score recalculation)
       try {
         await updateHotelAnalysis(eg_property_id)
       } catch (err) {
