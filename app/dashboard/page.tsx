@@ -165,6 +165,133 @@ function Section({ title, icon, children }: { title: string; icon: string; child
   )
 }
 
+function HotelSelect({ hotels, value, onChange }: {
+  hotels: Hotel[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+
+  const selected = hotels.find(h => h.eg_property_id === value)
+  const filtered = search
+    ? hotels.filter(h =>
+        (h.property_name ?? h.eg_property_id).toLowerCase().includes(search.toLowerCase()) ||
+        (h.city ?? '').toLowerCase().includes(search.toLowerCase())
+      )
+    : hotels
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+        setSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative min-w-64">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm transition-all text-left"
+        style={{
+          backgroundColor: open ? '#fff' : '#f4f2ff',
+          border: `1px solid ${open ? '#0050b8' : '#c2c6d6'}`,
+          boxShadow: open ? '0 0 0 3px rgba(0,80,184,0.12)' : 'none',
+          color: selected ? '#141936' : '#727785',
+        }}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="material-symbols-outlined text-base flex-shrink-0"
+                style={{ color: open ? '#0050b8' : '#c2c6d6' }}>
+            apartment
+          </span>
+          <span className="truncate">
+            {selected
+              ? `${selected.property_name ?? selected.eg_property_id}${selected.city ? ` · ${selected.city}` : ''}`
+              : '— Select a property —'}
+          </span>
+        </div>
+        <span className="material-symbols-outlined text-base flex-shrink-0 transition-transform"
+              style={{ color: '#727785', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+          expand_more
+        </span>
+      </button>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden"
+             style={{
+               backgroundColor: '#fff',
+               border: '1px solid #c2c6d6',
+               boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+             }}>
+          {/* Search */}
+          <div className="p-2" style={{ borderBottom: '1px solid rgba(194,198,214,0.4)' }}>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                 style={{ backgroundColor: '#f4f2ff' }}>
+              <span className="material-symbols-outlined text-base" style={{ color: '#727785' }}>search</span>
+              <input
+                type="text"
+                placeholder="Search properties..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="flex-1 bg-transparent text-sm outline-none"
+                style={{ color: '#141936' }}
+                autoFocus
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch('')}
+                        className="text-xs leading-none" style={{ color: '#727785' }}>✕</button>
+              )}
+            </div>
+          </div>
+          {/* List */}
+          <div className="max-h-64 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm" style={{ color: '#727785' }}>No properties found</div>
+            ) : (
+              filtered.map(h => {
+                const isSelected = h.eg_property_id === value
+                return (
+                  <button
+                    key={h.eg_property_id}
+                    type="button"
+                    onClick={() => { onChange(h.eg_property_id); setOpen(false); setSearch('') }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm transition-colors"
+                    style={{ backgroundColor: isSelected ? 'rgba(0,80,184,0.06)' : 'transparent' }}
+                    onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = '#f4f2ff' }}
+                    onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}
+                  >
+                    <span className="material-symbols-outlined text-base flex-shrink-0"
+                          style={{ color: isSelected ? '#0050b8' : '#c2c6d6' }}>
+                      {isSelected ? 'check_circle' : 'apartment'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate" style={{ color: '#141936' }}>
+                        {h.property_name ?? h.eg_property_id}
+                      </p>
+                      <p className="text-xs truncate" style={{ color: '#727785' }}>
+                        {[h.city, h.star_rating ? `${'★'.repeat(Math.round(h.star_rating))} ${h.star_rating}` : ''].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ChartCard({ title, subtitle, data, color }: {
   title: string
   subtitle: string
@@ -535,27 +662,11 @@ export default function DashboardPage() {
             {/* Hotel selector */}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold" style={{ color: '#424654' }}>Select property</label>
-              <select
-                className="px-4 py-3 rounded-xl text-sm outline-none transition-all min-w-64"
-                style={{
-                  backgroundColor: '#f4f2ff',
-                  border: '1px solid #c2c6d6',
-                  color: '#141936',
-                }}
-                onFocus={e => { e.currentTarget.style.boxShadow = '0 0 0 2px #0050b8'; e.currentTarget.style.backgroundColor = '#fff' }}
-                onBlur={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.backgroundColor = '#f4f2ff' }}
+              <HotelSelect
+                hotels={hotels}
                 value={selectedId}
-                onChange={(e) => handleHotelChange(e.target.value)}
-              >
-                <option value="">— Select a property —</option>
-                {hotels.map((h) => (
-                  <option key={h.eg_property_id} value={h.eg_property_id}>
-                    {h.property_name ?? h.eg_property_id}
-                    {h.city ? ` · ${h.city}` : ''}
-                    {h.star_rating ? ` ⭐ ${h.star_rating}` : ''}
-                  </option>
-                ))}
-              </select>
+                onChange={handleHotelChange}
+              />
             </div>
           </div>
         </div>
