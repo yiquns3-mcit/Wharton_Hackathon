@@ -15,6 +15,17 @@ interface Hotel {
   star_rating: number
 }
 
+interface FactTagItem {
+  tag_id: string
+  fact_claim: string
+  source_field: string
+  volatility: 'high' | 'medium'
+  gap_score: number
+  coverage_count_last_year: number
+  total_reviews_last_year: number
+  last_verified_at: string | null
+}
+
 interface BiData {
   eg_property_id: string
   total_reviews: number
@@ -28,6 +39,7 @@ interface BiData {
     time_confidence: Record<string, number>
     text_coverage: Record<string, number>
   }
+  fact_inventory: FactTagItem[]
 }
 
 interface SseEvent {
@@ -244,6 +256,92 @@ function SliderRow({ label, sublabel, value, onChange, auto }: {
   )
 }
 
+// ─── Fact Gap Ranking ───────────────────────────────────────────────────────
+function FactGapRanking({ facts }: { facts: FactTagItem[] }) {
+  if (facts.length === 0) {
+    return (
+      <div className="flex flex-col items-center py-10 gap-3">
+        <span className="material-symbols-outlined text-4xl"
+              style={{ color: '#c2c6d6', fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 48" }}>
+          label_off
+        </span>
+        <p className="text-sm" style={{ color: '#727785' }}>
+          No fact tags generated yet. Use &ldquo;Generate Fact Tags&rdquo; below.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {facts.map((tag, i) => {
+        const coverageRate = tag.total_reviews_last_year > 0
+          ? tag.coverage_count_last_year / tag.total_reviews_last_year
+          : 0
+        const lastVerified = tag.last_verified_at
+          ? new Date(tag.last_verified_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : 'Never'
+
+        return (
+          <div key={tag.tag_id} className="flex items-start gap-3">
+            {/* Rank badge */}
+            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5"
+                 style={{ backgroundColor: i === 0 ? '#0050b8' : '#f4f2ff', color: i === 0 ? '#fff' : '#0050b8' }}>
+              {i + 1}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              {/* Fact claim + badges */}
+              <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                <span className="text-sm font-medium" style={{ color: '#141936' }}>
+                  {tag.fact_claim}
+                </span>
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                      style={{ backgroundColor: '#f4f2ff', color: '#585c7d' }}>
+                  {tag.source_field}
+                </span>
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                      style={{
+                        backgroundColor: tag.volatility === 'high' ? '#fff0f0' : '#f0f7ff',
+                        color: tag.volatility === 'high' ? '#ba1a1a' : '#0050b8',
+                      }}>
+                  {tag.volatility}
+                </span>
+              </div>
+
+              {/* Coverage bar */}
+              <div className="flex items-center gap-3 mb-1">
+                <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ backgroundColor: '#f4f2ff' }}>
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.max(coverageRate * 100, 2)}%`,
+                      backgroundColor: coverageRate > 0.5 ? '#10b981' : coverageRate > 0.2 ? '#f59e0b' : '#ba1a1a',
+                    }}
+                  />
+                </div>
+                <span className="text-xs tabular-nums w-20 text-right" style={{ color: '#727785' }}>
+                  {Math.round(coverageRate * 100)}% coverage
+                </span>
+              </div>
+
+              {/* Meta row */}
+              <div className="flex items-center gap-4">
+                <span className="text-xs" style={{ color: '#727785' }}>
+                  Last verified: {lastVerified}
+                </span>
+                <span className="text-xs font-semibold tabular-nums" style={{ color: '#424654' }}>
+                  gap {tag.gap_score.toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [hotels, setHotels] = useState<Hotel[]>([])
@@ -260,6 +358,9 @@ export default function DashboardPage() {
   const [batchProgress, setBatchProgress] = useState<{ processed: number; total: number; failed: number } | null>(null)
   const [forceReanalyze, setForceReanalyze] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+
+  const [factGenRunning, setFactGenRunning] = useState(false)
+  const [factGenMessage, setFactGenMessage] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/hotels')
@@ -284,6 +385,7 @@ export default function DashboardPage() {
     setSelectedHotel(hotels.find(h => h.eg_property_id === id) ?? null)
     setBi(null)
     setBatchProgress(null)
+    setFactGenMessage(null)
     if (id) loadBi(id)
   }
 
@@ -356,6 +458,31 @@ export default function DashboardPage() {
     }
     setBatchRunning(false)
   }
+
+  const handleGenerateFacts = async () => {
+    if (!selectedId) return
+    setFactGenRunning(true)
+    setFactGenMessage(null)
+    try {
+      const res = await fetch('/api/ai/facts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eg_property_id: selectedId }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setFactGenMessage(`✓ ${data.count} fact tags generated. Run Batch Analysis to rebuild coverage data.`)
+        loadBi(selectedId)
+      } else {
+        setFactGenMessage(`Error: ${data.error}`)
+      }
+    } catch (err) {
+      setFactGenMessage(`Error: ${String(err)}`)
+    }
+    setFactGenRunning(false)
+  }
+
+  const hasFactTags = (bi?.fact_inventory?.length ?? 0) > 0
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -485,10 +612,10 @@ export default function DashboardPage() {
                 />
               </div>
 
-              {/* Priority ranking */}
-              <Section title="Priority Ranking" icon="leaderboard">
+              {/* Priority ranking (rating features) */}
+              <Section title="Rating Feature Priority" icon="leaderboard">
                 <p className="text-xs mb-5" style={{ color: '#727785' }}>
-                  Features ranked by composite priority score — higher score means more data is needed.
+                  Rating features ranked by composite priority score — higher score means more data is needed.
                 </p>
                 <div className="space-y-3">
                   {bi.top_features.map((f, i) => (
@@ -518,6 +645,15 @@ export default function DashboardPage() {
                 </div>
               </Section>
 
+              {/* Fact Gap Ranking */}
+              <Section title="Fact Gap Ranking" icon="fact_check">
+                <p className="text-xs mb-5" style={{ color: '#727785' }}>
+                  Verifiable facts extracted from the hotel description, ranked by gap score — higher means fewer recent reviews confirmed this fact.
+                  Gap score = 0.5 × (1 − coverage rate) + 0.5 × staleness.
+                </p>
+                <FactGapRanking facts={bi.fact_inventory ?? []} />
+              </Section>
+
               {/* Charts */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <ChartCard
@@ -543,7 +679,7 @@ export default function DashboardPage() {
               {/* Weight configuration */}
               <Section title="Weight Configuration" icon="tune">
                 <p className="text-xs mb-6" style={{ color: '#727785' }}>
-                  Adjust how each dimension contributes to the priority score. w1 + w2 + w3 must equal 1.
+                  Adjust how each dimension contributes to the rating feature priority score. w1 + w2 + w3 must equal 1.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-6">
                   <SliderRow
@@ -587,7 +723,9 @@ export default function DashboardPage() {
               {/* Batch analysis */}
               <Section title="Batch Historical Analysis" icon="batch_prediction">
                 <p className="text-sm mb-5" style={{ color: '#424654' }}>
-                  Run AI text analysis (Scene 3) on all reviews for this property that have not yet been analyzed.
+                  Run AI analysis (Scene 3) on reviews for this property. This updates both{' '}
+                  <strong>text coverage</strong> (which rating features are mentioned) and{' '}
+                  <strong>fact tag coverage</strong> (which hotel facts reviewers confirm).
                   Check &ldquo;Re-analyze all&rdquo; to overwrite existing results.
                 </p>
 
@@ -655,6 +793,82 @@ export default function DashboardPage() {
                     Re-analyze all reviews
                   </label>
                 </div>
+              </Section>
+
+              {/* Fact Tag Management */}
+              <Section title="Fact Tag Management" icon="label">
+                <p className="text-sm mb-5" style={{ color: '#424654' }}>
+                  Fact tags are verifiable claims extracted from the hotel description (e.g. &ldquo;Heated outdoor pool&rdquo;,
+                  &ldquo;Free airport shuttle&rdquo;). They track whether recent reviews confirm or miss key facts about the property.
+                </p>
+
+                {hasFactTags && (
+                  <div className="mb-4 p-3 rounded-lg flex items-start gap-2"
+                       style={{ backgroundColor: '#fff8e1', border: '1px solid #fde68a' }}>
+                    <span className="material-symbols-outlined text-base mt-0.5" style={{ color: '#b45309' }}>warning</span>
+                    <p className="text-xs" style={{ color: '#78350f' }}>
+                      Regenerating will clear existing fact coverage data from all reviews.
+                      Run Batch Analysis afterwards to rebuild coverage stats with the new tags.
+                    </p>
+                  </div>
+                )}
+
+                {factGenMessage && (
+                  <div className="mb-4 p-3 rounded-lg"
+                       style={{
+                         backgroundColor: factGenMessage.startsWith('Error') ? '#fff0f0' : '#f0fdf4',
+                         border: `1px solid ${factGenMessage.startsWith('Error') ? '#fecaca' : '#bbf7d0'}`,
+                       }}>
+                    <p className="text-sm font-medium"
+                       style={{ color: factGenMessage.startsWith('Error') ? '#ba1a1a' : '#166534' }}>
+                      {factGenMessage}
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleGenerateFacts}
+                  disabled={factGenRunning}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-full font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: hasFactTags ? '#fff' : '#0050b8',
+                    color: hasFactTags ? '#0050b8' : '#fff',
+                    border: hasFactTags ? '1.5px solid #0050b8' : 'none',
+                  }}
+                  onMouseEnter={e => {
+                    if (!e.currentTarget.disabled) {
+                      e.currentTarget.style.backgroundColor = hasFactTags ? '#f4f2ff' : '#00429a'
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!e.currentTarget.disabled) {
+                      e.currentTarget.style.backgroundColor = hasFactTags ? '#fff' : '#0050b8'
+                    }
+                  }}
+                >
+                  {factGenRunning ? (
+                    <>
+                      <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
+                      Generating…
+                    </>
+                  ) : hasFactTags ? (
+                    <>
+                      <span className="material-symbols-outlined text-base">refresh</span>
+                      Regenerate Fact Tags
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-base">auto_awesome</span>
+                      Generate Fact Tags
+                    </>
+                  )}
+                </button>
+
+                {hasFactTags && (
+                  <p className="text-xs mt-3" style={{ color: '#727785' }}>
+                    {bi.fact_inventory.length} fact tags currently active
+                  </p>
+                )}
               </Section>
             </>
           )}

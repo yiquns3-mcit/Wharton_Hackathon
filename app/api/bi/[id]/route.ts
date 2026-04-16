@@ -21,7 +21,7 @@ export async function GET(
   // Read current weight_config from hotel_analysis
   const { data: ha } = await supabase
     .from('hotel_analysis')
-    .select('priority_scores, top_features, weight_config, last_updated')
+    .select('priority_scores, top_features, weight_config, last_updated, fact_inventory, gap_questions')
     .eq('eg_property_id', eg_property_id)
     .single()
 
@@ -44,6 +44,8 @@ export async function GET(
     priority_scores,
     top_features,
     dimensions,
+    fact_inventory: ha?.fact_inventory ?? [],
+    gap_questions: ha?.gap_questions ?? [],
   })
 }
 

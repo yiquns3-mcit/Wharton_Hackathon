@@ -31,9 +31,9 @@ async function hasFactInventory(propertyId: string): Promise<boolean> {
 }
 
 // Extract facts from description using GPT-4o, initialise gap stats, upsert.
-// Idempotent: skips if fact_inventory is already populated.
-export async function extractAndStoreFacts(propertyId: string): Promise<FactTag[]> {
-  if (await hasFactInventory(propertyId)) {
+// Idempotent: skips if fact_inventory is already populated (unless force=true).
+export async function extractAndStoreFacts(propertyId: string, force = false): Promise<FactTag[]> {
+  if (!force && await hasFactInventory(propertyId)) {
     // Already seeded — fetch and return existing inventory
     const { data } = await supabase
       .from('hotel_analysis')
